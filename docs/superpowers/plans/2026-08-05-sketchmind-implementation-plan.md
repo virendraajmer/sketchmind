@@ -2,100 +2,167 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build SketchMind — an AI-native Technical Sketch Engine that turns a natural-language request into a reasoned, semantically-modeled, constraint-laid-out, and stroke-by-stroke animated whiteboard drawing — as a TypeScript monorepo, in 8 runnable phases.
+**Goal:** Build SketchMind — an agentic technical sketch engine where an AI agent, given any natural-language request, reasons out what an object *is*, and draws it on a whiteboard stroke by stroke like a teacher — with a web frontend for real testing, autonomous agents on both server and client, and a fully swappable LLM layer (Azure OpenAI / AI Foundry first).
 
-**Architecture:** Strict pipeline of independent, contract-bound packages: `Natural Language → Intent → Visual Plan → Shape Graph → Diagram AST → Constraint Graph → Layout Model → Stroke AST → Renderer`. AI (LLM) only ever produces structured JSON reasoning (Intent, Visual Plan, Shape Graph, Diagram AST); it never emits coordinates, SVG, canvas/Konva commands, or geometry. Everything from the Constraint Engine onward is deterministic software. Renderers are pluggable and know nothing about AI or layout.
+**Architecture:** Two agent loops wrapped around one strictly deterministic pipeline.
 
-**Tech Stack:** TypeScript monorepo (Node.js), package manager + workspaces (pnpm recommended), Turborepo-style incremental builds, Vitest/Jest for testing, Zod (or similar) for runtime schema validation, Konva as the first renderer backend, Next.js-based `playground` app for manual verification. (Confirmed by `.gitignore` entries for `node_modules`, `*.tsbuildinfo`, `.next`.)
+```
+                         ┌──────────────── apps/web (browser) ────────────────┐
+                         │  Client Agent  ──tools──▶  Canvas / Stroke Runtime │
+                         └──────────▲──────────────────────┬──────────────────┘
+                                    │  session protocol     │  (LLM calls proxied —
+                                    │  (SSE / WebSocket)    │   no keys in browser)
+                         ┌──────────┴──────────────────────▼──────────────────┐
+                         │                 apps/api (server)                  │
+                         │  Server Agent ──tools──▶ deterministic pipeline:   │
+                         │                                                    │
+                         │   NL → Intent → VisualPlan → ShapeGraph →          │
+                         │   DiagramAST → ConstraintGraph → LayoutModel →     │
+                         │   StrokeAST → Renderer                             │
+                         └──────────────────────┬─────────────────────────────┘
+                                                │
+                                       LLMProvider interface
+                                                │
+                            ┌───────────────────┼───────────────────┐
+                      Azure OpenAI          Anthropic            Gemini / local
+                      (AI Foundry)          (adapter)            (adapter)
+```
+
+The LLM only ever produces structured JSON reasoning (Intent, Visual Plan, Shape Graph, Diagram AST) and tool calls. It never emits coordinates, SVG, canvas/Konva commands, or geometry. Everything from the Constraint Engine onward is deterministic. Renderers know nothing about AI or layout.
+
+**Tech Stack:** TypeScript monorepo (pnpm workspaces + Turborepo), Vitest, Zod for runtime schema validation, Konva as first renderer backend, Next.js for `apps/web`, Node/Fastify for `apps/api`, Azure OpenAI via AI Foundry as first LLM provider (`openai` npm SDK's `AzureOpenAI` client), SSE or WebSocket for agent/pipeline streaming.
 
 ## Global Constraints
 
-These apply to every phase and every task below — do not restate them per task, but do not violate them either.
+These apply to every phase. Do not restate per task; do not violate.
 
-- Monorepo layout is exactly: `apps/`, `packages/`, `examples/`, `docs/`, `tools/`, `scripts/`, `tests/`, `configs/` (Volume 11).
-- Dependency direction is one-way: `Applications → Orchestrator → Core Packages → Renderer Packages → External Libraries`. Packages never depend upward. No circular dependencies (Volume 11).
-- Shared models (`IntentModel`, `VisualPlan`, `DiagramAST`, `ShapeGraph`, `ConstraintGraph`, `LayoutModel`, `StrokeAST`, `RuntimeEvent`) live **only** in `packages/shared-types`. No package redefines or duplicates them (Volume 11, 12).
-- Every package exposes a versioned public API only (interfaces, input/output models, events, errors, config) — no cross-package imports of internal modules (Volume 12).
-- Four internal models must stay separate and are never merged into one object: Diagram AST (semantic), Constraint Model (relationships), Layout Model (geometry), Stroke AST (drawing sequence) (Volume 02).
-- AI components (Intent Analyzer, Visual Planner, Shape Intelligence, Diagram Reasoner) must never output coordinates, SVG, canvas commands, or Konva commands — structured JSON with stable IDs only (Volume 03, 10, 13, 15).
-- Every pipeline stage output must pass a validation gate before the next stage runs; invalid output halts the pipeline (Volume 09, 17).
-- Multi-LLM provider support (OpenAI, Anthropic, Gemini, local) via a single provider adapter interface; no provider-specific code outside `packages/ai-orchestrator`'s provider adapters (Volume 03, 09, 15).
-- Renderers must never call LLMs, compute layout, or mutate the Stroke AST — pure execution/paint layer (Volume 08).
-- MVP scope is: single renderer (Konva), one LLM provider wired live (others stubbed via the adapter interface), a small primitive set, animated drawing, replay, undo/redo, export. Explicitly deferred: collaboration, marketplace, multi-renderer, remote plugin registries, cloud sync (Volume 18).
-- Every package ships with unit tests, and root-level `tests/` holds contract/integration/system tests (Volume 11, 17).
+**Structure & dependencies**
+- Monorepo layout: `apps/`, `packages/`, `examples/`, `docs/`, `tools/`, `scripts/`, `tests/`, `configs/` (Volume 11).
+- One-way dependency direction: `Applications → Agents → Orchestrator → Core Packages → Renderer Packages → External Libraries`. Never depend upward. No cycles (Volume 11).
+- Shared models live **only** in `packages/shared-types`. No package redefines or duplicates them (Volume 11, 12).
+- Every package exposes a versioned public API only — no cross-package imports of internals (Volume 12).
+- The four models stay separate, never merged: Diagram AST (semantic), Constraint Model (relationships), Layout Model (geometry), Stroke AST (drawing sequence) (Volume 02).
+
+**AI boundaries**
+- No AI component — agent or pipeline stage — may output coordinates, SVG, canvas commands, or Konva commands. Structured JSON with stable IDs only (Volume 03, 10, 13, 15).
+- `LayoutModel` is the **only** model in the entire system permitted to contain numeric geometry.
+- Every pipeline stage output passes a validation gate before the next stage runs; invalid output halts the pipeline (Volume 09, 17).
+- Never trust raw LLM output — schema-validate everything (Volume 17).
+
+**LLM independence (hard requirement)**
+- All model access goes through the `LLMProvider` interface in `packages/llm-provider`. No provider-specific types, SDK imports, or config leak into any other package — including the agent packages.
+- Adding a new provider means adding one `packages/llm-provider-*` package and one config entry. Nothing else changes.
+- Providers declare capabilities (`structuredOutput`, `toolCalling`, `streaming`, `parallelToolCalls`); callers branch on capability flags, never on provider name.
+- Azure OpenAI (AI Foundry) is the first live adapter. At least one second adapter must exist (even if stubbed) at all times to prove the abstraction holds.
+
+**Security**
+- LLM credentials (Azure keys, Entra tokens) exist only on the server. The client agent's model calls proxy through `apps/api`. No provider SDK is ever bundled into browser code.
+- Client-agent tool calls are validated and authorized server-side where they have server effects; the browser is never trusted.
+
+**Agents**
+- Both agents share one agent loop implementation (`packages/agent-core`) and one tool-definition format. Server and client differ only in which tools they are given.
+- Every agent run is bounded: max steps, max tokens, wall-clock timeout, and a cancellation token. No unbounded loops.
+- Every agent step is traced (thought, tool, args, result, duration, tokens) and streamable to the UI.
+
+**MVP scope** (Volume 18)
+- Required: single renderer (Konva), Azure OpenAI live, basic primitives, animated drawing, replay, undo/redo, export, web UI, both agents.
+- Deferred: collaboration, marketplace, multi-renderer in production, remote plugin registries, cloud sync.
+
+**Testing** — every package ships unit tests; root `tests/` holds contract/integration/system tests (Volume 11, 17).
 
 ---
 
 ## Scope Note (read before executing)
 
-This spec spans 8 independent subsystems (repo scaffolding, shared models, AI reasoning, layout/constraints, stroke engine, rendering, plugin SDK, end-to-end orchestration). Per `writing-plans` guidance, a spec this size should really be split into one detailed sub-plan per phase, written immediately before that phase starts — not all up front, because later phases depend on interfaces only Phase 1–2 will concretely settle (exact Zod schemas, exact event names, exact package names beyond what the docs already fix).
+This spec spans many independent subsystems. Per `writing-plans` guidance, each phase should get its own detailed sub-plan written *immediately before that phase starts* — not all up front, because later phases depend on interfaces only earlier phases will concretely settle.
 
 So this document does two things:
-1. **Phase 1** below is a fully detailed, bite-sized, TDD-ready plan — start here.
-2. **Phases 2–8** are specified as a firm roadmap: exact packages, responsibilities, inputs/outputs, and acceptance criteria per Volumes 02–18 — enough to scope and sequence work, but each should get its own `writing-plans` pass (producing `docs/superpowers/plans/YYYY-MM-DD-phase-N-<name>.md`) once the prior phase's interfaces are real code, not spec prose. Trying to pre-write bite-sized code steps for phases 4–8 today would mean inventing schema details the docs deliberately leave to implementation — that code would likely be thrown away once Phase 1–3 settle real types.
 
-Recommended cadence: finish a phase → run `superpowers:writing-plans` again for the next phase, using the actual interfaces just built as the "Interfaces: Consumes" input.
+1. **Phase 1** is a fully detailed, bite-sized, TDD-ready plan — start here.
+2. **Phases 2–12** are a firm roadmap: exact packages, responsibilities, inputs/outputs, and acceptance criteria — enough to scope and sequence, but each gets its own `writing-plans` pass (producing `docs/superpowers/plans/YYYY-MM-DD-phase-N-<name>.md`) once the prior phase's interfaces are real code rather than spec prose.
+
+Phase ordering deliberately front-loads a **working vertical slice** (Phases 1–8: you can type a request in a browser and watch it draw) *before* the agentic sophistication (Phases 9–10). This follows Volume 18's "prefer a small working vertical slice over a partially implemented architecture" — and it's the honest sequence, because the agents wrap a pipeline that must already work.
+
+---
+
+## Package Map
+
+Beyond Volume 11's list, this plan adds packages for LLM independence, the agent layer, and the client/server protocol. Every addition follows the same contract rules.
+
+| Package | Responsibility | Phase |
+|---|---|---|
+| `shared-types` | All shared models + Zod schemas. Depends on nothing. | 1–2 |
+| `utilities` | Cross-cutting helpers (ids, result types, logging shims). | 1 |
+| **`llm-provider`** | **`LLMProvider` interface, capability flags, retry/repair, provider registry. Zero SDK imports.** | 3 |
+| **`llm-provider-azure-openai`** | **Azure OpenAI / AI Foundry adapter. The only place Azure types exist.** | 3 |
+| **`llm-provider-anthropic`** | **Second adapter (proves the abstraction). May be minimal.** | 3 |
+| `intent-analyzer` | NL → `IntentModel`. | 4 |
+| `visual-planner` | `IntentModel` → `VisualPlan`. | 4 |
+| `shape-intelligence` | `VisualPlan` → `ShapeGraph` + primitive discovery/generation/learning. | 4 |
+| `diagram-reasoner` | `ShapeGraph` → `DiagramAST`. | 4 |
+| `diagram-ast` | AST builder API, validator, versioning, serialization. | 2 |
+| `constraint-engine` | `DiagramAST` → `ConstraintGraph`. | 5 |
+| `layout-engine` | `ConstraintGraph` → `LayoutModel`. Solver, collision, labels, routing. | 5 |
+| `stroke-planner` | `LayoutModel` → `StrokeAST` + optimizer. Human drawing rules. | 6 |
+| `stroke-runtime` | Playback: play/pause/seek/replay/undo/redo. Renderer-independent. | 6 |
+| `renderer-core` | Adapter contract, layer model, viewport, hit-testing, registry. | 7 |
+| `renderer-konva` | First concrete backend. | 7 |
+| `renderer-svg` | Skeleton only in MVP (proves the SDK is backend-agnostic). | 7 |
+| **`session-protocol`** | **Typed client↔server message contract: events + commands + agent traces.** | 8 |
+| **`agent-core`** | **Provider-agnostic agent loop, tool registry, step budget, tracing, cancellation. Shared by both agents.** | 9 |
+| **`agent-tools-server`** | **Server tool surface: pipeline stages, registry search, primitive generation, validation, layout critique.** | 9 |
+| **`agent-tools-canvas`** | **Client tool surface over renderer + stroke-runtime: highlight, zoom, annotate, pause, erase, redraw, select.** | 10 |
+| **`client-agent`** | **Browser agent: `agent-core` + canvas tools + proxied LLM calls.** | 10 |
+| `ai-orchestrator` | Pipeline execution, state, checkpoints, caching, event bus. | 12 |
+| `primitive-sdk` | Manifest schema, validation, primitive registry. | 11 |
+| `plugin-sdk` | Plugin loading for subject packs, primitives, renderers, strategies, exporters. | 11 |
+| `export-engine` | PNG/SVG/PDF/JSON/replay-package export. | 7, 12 |
+
+**Apps**
+
+| App | Responsibility | Phase |
+|---|---|---|
+| **`apps/web`** | **Next.js frontend: prompt input, live whiteboard canvas, playback controls, agent trace panel, diagram inspector.** | 8 |
+| **`apps/api`** | **Fastify server: hosts orchestrator + server agent, streams to client, proxies client-agent LLM calls.** | 8 |
 
 ---
 
 ## Phase 1 — Repository Foundation
 
-**Maps to:** Volume 11 (Repository Structure), Volume 18 Phase 1.
+**Maps to:** Volume 11, Volume 18 Phase 1.
 
-**Deliverable:** `sketchmind/` builds, lints, and tests successfully with empty-but-real package skeletons for every package named in Volume 11, wired together with correct one-way dependencies, before any business logic is written.
+**Deliverable:** the monorepo builds, lints, and tests with real skeletons for every package and both apps, wired with correct one-way dependencies, before any business logic exists.
 
 ### File Structure
 
 ```
 sketchmind/
-├── package.json                  # workspace root, scripts: build/lint/test
+├── package.json                  # workspace root: build/lint/test/typecheck
 ├── pnpm-workspace.yaml
 ├── tsconfig.base.json
 ├── turbo.json
 ├── .eslintrc.cjs
 ├── .prettierrc
 ├── vitest.workspace.ts
+├── .env.example                  # Azure OpenAI config keys, no secrets
 ├── apps/
-│   └── playground/                # Next.js app, consumes packages, no business logic
-├── packages/
-│   ├── shared-types/
-│   ├── ai-orchestrator/
-│   ├── intent-analyzer/
-│   ├── visual-planner/
-│   ├── diagram-reasoner/
-│   ├── shape-intelligence/
-│   ├── diagram-ast/
-│   ├── constraint-engine/
-│   ├── layout-engine/
-│   ├── stroke-planner/
-│   ├── stroke-runtime/
-│   ├── renderer-core/
-│   ├── renderer-konva/
-│   ├── renderer-svg/
-│   ├── primitive-sdk/
-│   ├── plugin-sdk/
-│   ├── export-engine/
-│   └── utilities/
-├── examples/
-├── docs/                          # already exists (Volumes 01-18)
-├── tools/
-├── scripts/
-├── tests/                         # root-level contract/integration/system tests
-└── configs/
+│   ├── web/                      # Next.js frontend
+│   └── api/                      # Fastify server
+├── packages/                     # 24 packages per the Package Map above
+├── examples/  docs/  tools/  scripts/  tests/  configs/
 ```
 
-Each `packages/<name>/` gets the same internal skeleton:
+Every `packages/<name>/` gets the same skeleton:
 
 ```
 packages/<name>/
 ├── package.json          # name: "@sketchmind/<name>"
-├── tsconfig.json          # extends ../../tsconfig.base.json
+├── tsconfig.json         # extends ../../tsconfig.base.json
 ├── src/
-│   ├── index.ts           # public API surface only
-│   └── internal/          # implementation, never imported by other packages
-├── tests/
-│   └── index.test.ts
-└── README.md              # purpose, public API, examples (Volume 11)
+│   ├── index.ts          # public API surface only
+│   └── internal/         # implementation, never imported cross-package
+├── tests/index.test.ts
+└── README.md             # purpose, public API, examples (Volume 11)
 ```
 
 ### Task 1: Workspace root and tooling
@@ -104,7 +171,7 @@ packages/<name>/
 - Create: `package.json`, `pnpm-workspace.yaml`, `tsconfig.base.json`, `turbo.json`, `.eslintrc.cjs`, `.prettierrc`, `vitest.workspace.ts`
 
 **Interfaces:**
-- Produces: root `build`, `lint`, `test`, `typecheck` scripts that every later task and phase relies on to verify their work.
+- Produces: root `build`, `lint`, `test`, `typecheck` scripts that every later task and phase uses to verify work.
 
 - [ ] **Step 1: Write root `package.json`**
 
@@ -117,12 +184,16 @@ packages/<name>/
     "build": "turbo run build",
     "lint": "turbo run lint",
     "test": "turbo run test",
-    "typecheck": "turbo run typecheck"
+    "typecheck": "turbo run typecheck",
+    "dev": "turbo run dev --parallel"
   },
   "devDependencies": {
     "turbo": "^2.0.0",
     "typescript": "^5.5.0",
     "eslint": "^9.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "eslint-plugin-import": "^2.29.0",
     "prettier": "^3.3.0",
     "vitest": "^2.0.0"
   }
@@ -162,10 +233,11 @@ packages:
 {
   "$schema": "https://turbo.build/schema.json",
   "pipeline": {
-    "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
+    "build": { "dependsOn": ["^build"], "outputs": ["dist/**", ".next/**"] },
     "test": { "dependsOn": ["build"] },
     "lint": {},
-    "typecheck": { "dependsOn": ["^build"] }
+    "typecheck": { "dependsOn": ["^build"] },
+    "dev": { "cache": false, "persistent": true }
   }
 }
 ```
@@ -177,21 +249,30 @@ module.exports = {
   root: true,
   parser: "@typescript-eslint/parser",
   plugins: ["@typescript-eslint", "import"],
-  extends: [
-    "eslint:recommended",
-    "plugin:@typescript-eslint/recommended"
-  ],
+  extends: ["eslint:recommended", "plugin:@typescript-eslint/recommended"],
   rules: {
     "import/no-cycle": "error",
     "no-restricted-imports": [
       "error",
-      { "patterns": ["**/internal/*"] }
+      {
+        "patterns": [
+          { "group": ["**/internal/*"], "message": "Import a package's public API only (Volume 12)." },
+          { "group": ["openai", "@azure/*", "@anthropic-ai/*", "@google/*"],
+            "message": "Provider SDKs may only be imported inside packages/llm-provider-* (Global Constraints: LLM independence)." }
+        ]
+      }
     ]
-  }
+  },
+  overrides: [
+    {
+      files: ["packages/llm-provider-*/**"],
+      rules: { "no-restricted-imports": "off" }
+    }
+  ]
 };
 ```
 
-The `no-restricted-imports` rule against `**/internal/*` is the enforcement mechanism for "packages must never depend on another package's internal implementation" (Global Constraints).
+The second `no-restricted-imports` group is the mechanical enforcement of LLM independence — provider SDKs are physically un-importable outside their adapter package. This is what makes "swap any LLM anytime" a guarantee rather than an intention.
 
 - [ ] **Step 6: Write `.prettierrc`**
 
@@ -204,16 +285,13 @@ The `no-restricted-imports` rule against `**/internal/*` is the enforcement mech
 ```ts
 import { defineWorkspace } from "vitest/config";
 
-export default defineWorkspace([
-  "packages/*",
-  "apps/*"
-]);
+export default defineWorkspace(["packages/*", "apps/*"]);
 ```
 
-- [ ] **Step 8: Install dependencies and verify workspace resolves**
+- [ ] **Step 8: Install and verify**
 
 Run: `pnpm install`
-Expected: lockfile created, no errors (workspace has no member packages yet, so this just validates root tooling).
+Expected: lockfile created, no errors.
 
 - [ ] **Step 9: Commit**
 
@@ -222,14 +300,14 @@ git add package.json pnpm-workspace.yaml tsconfig.base.json turbo.json .eslintrc
 git commit -m "chore: scaffold monorepo tooling (pnpm + turbo + eslint + vitest)"
 ```
 
-### Task 2: `shared-types` package (first package, no dependencies)
+### Task 2: `shared-types` package (leaf, no dependencies)
 
 **Files:**
-- Create: `packages/shared-types/package.json`, `packages/shared-types/tsconfig.json`, `packages/shared-types/src/index.ts`, `packages/shared-types/tests/index.test.ts`, `packages/shared-types/README.md`
+- Create: `packages/shared-types/{package.json,tsconfig.json,src/index.ts,tests/index.test.ts,README.md}`
 
 **Interfaces:**
-- Consumes: nothing (leaf package, Global Constraints dependency direction).
-- Produces: `PACKAGE_NAME` and `PACKAGE_VERSION` constants that Task 3's contract test imports to prove the package resolves as a workspace dependency. Real shared models (`IntentModel`, `DiagramAST`, etc.) are added in Phase 2 Task — this task only proves the package skeleton, build, and test wiring work end-to-end.
+- Consumes: nothing (leaf package).
+- Produces: `PACKAGE_NAME` / `PACKAGE_VERSION` constants proving the package resolves as a workspace dependency. Real models arrive in Phase 2 — this task only proves skeleton, build, and test wiring.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -250,9 +328,9 @@ describe("shared-types package identity", () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `pnpm --filter @sketchmind/shared-types test`
-Expected: FAIL — `src/index.ts` does not exist / exports not found.
+Expected: FAIL — `src/index.ts` does not exist.
 
-- [ ] **Step 3: Write package skeleton**
+- [ ] **Step 3: Write the package skeleton**
 
 `packages/shared-types/package.json`
 
@@ -295,12 +373,10 @@ export const PACKAGE_VERSION = "0.0.1";
 ```markdown
 # @sketchmind/shared-types
 
-Purpose: canonical home for every model shared across SketchMind packages
-(IntentModel, VisualPlan, DiagramAST, ShapeGraph, ConstraintGraph,
-LayoutModel, StrokeAST, RuntimeEvent). No other package may redefine
-these models (see Volume 11 §Shared Types, Volume 12).
-
-Public API: see `src/index.ts`.
+Canonical home for every model shared across SketchMind packages
+(IntentModel, VisualPlan, VIL, ShapeGraph, DiagramAST, ConstraintGraph,
+LayoutModel, StrokeAST, RuntimeEvent, AgentTrace). No other package may
+redefine these (Volume 11 §Shared Types, Volume 12).
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -315,113 +391,244 @@ git add packages/shared-types
 git commit -m "feat(shared-types): scaffold package skeleton"
 ```
 
-### Task 3: Remaining 16 package skeletons
+### Task 3: Remaining package skeletons
 
 **Files:**
-- Create: for each of `ai-orchestrator`, `intent-analyzer`, `visual-planner`, `diagram-reasoner`, `shape-intelligence`, `diagram-ast`, `constraint-engine`, `layout-engine`, `stroke-planner`, `stroke-runtime`, `renderer-core`, `renderer-konva`, `renderer-svg`, `primitive-sdk`, `plugin-sdk`, `export-engine`, `utilities` — the same 5-file skeleton as Task 2, with `@sketchmind/<name>` substituted.
-- Test: `packages/<name>/tests/index.test.ts` per package.
+- Create: the same 5-file skeleton for every other package in the Package Map — `utilities`, `llm-provider`, `llm-provider-azure-openai`, `llm-provider-anthropic`, `intent-analyzer`, `visual-planner`, `shape-intelligence`, `diagram-reasoner`, `diagram-ast`, `constraint-engine`, `layout-engine`, `stroke-planner`, `stroke-runtime`, `renderer-core`, `renderer-konva`, `renderer-svg`, `session-protocol`, `agent-core`, `agent-tools-server`, `agent-tools-canvas`, `client-agent`, `ai-orchestrator`, `primitive-sdk`, `plugin-sdk`, `export-engine`.
 
 **Interfaces:**
-- Consumes: `@sketchmind/shared-types` (Task 2) as a `workspace:*` dependency in every package's `package.json` — this is what later phases will replace with real imports of shared models.
-- Produces: for every package, `PACKAGE_NAME`/`PACKAGE_VERSION` constants (same shape as Task 2), so Phase 2+ plans can rely on every package already building, testing, and lint-passing before real logic is added.
+- Consumes: `@sketchmind/shared-types` as `workspace:*` in each package.
+- Produces: `PACKAGE_NAME` / `PACKAGE_VERSION` per package, so later phases build on packages that already compile, test, and lint.
 
-- [ ] **Step 1: Write the failing test for one representative package (`ai-orchestrator`)**
+- [ ] **Step 1: Write the failing test for one representative package (`llm-provider`)**
 
-`packages/ai-orchestrator/tests/index.test.ts`
+`packages/llm-provider/tests/index.test.ts`
 
 ```ts
 import { describe, it, expect } from "vitest";
 import { PACKAGE_NAME, PACKAGE_VERSION } from "../src/index";
 
-describe("ai-orchestrator package identity", () => {
+describe("llm-provider package identity", () => {
   it("exposes its name and version", () => {
-    expect(PACKAGE_NAME).toBe("@sketchmind/ai-orchestrator");
+    expect(PACKAGE_NAME).toBe("@sketchmind/llm-provider");
     expect(PACKAGE_VERSION).toBe("0.0.1");
   });
 });
 ```
 
-Repeat the identical pattern (swap the package name string) for each of the other 15 packages listed above.
+Repeat this exact pattern for every remaining package, swapping only the package-name string.
 
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `pnpm -r test`
-Expected: FAIL for all 16 new packages — no `src/index.ts` yet, and most don't have `package.json` yet either.
+Expected: FAIL for every new package — no `src/index.ts` yet.
 
 - [ ] **Step 3: Scaffold each package**
 
-For each package `<name>` in the list, create the same four files as Task 2 Step 3, with `@sketchmind/<name>` substituted for the package name in `package.json` and `src/index.ts`, and this dependency added to `package.json`:
+For each package `<name>`, create the four files from Task 2 Step 3 with `@sketchmind/<name>` substituted, plus this dependency:
 
 ```json
-"dependencies": {
-  "@sketchmind/shared-types": "workspace:*"
-}
+"dependencies": { "@sketchmind/shared-types": "workspace:*" }
 ```
 
-`packages/<name>/tsconfig.json` is identical to Task 2's, extending `../../tsconfig.base.json`.
-
-`packages/<name>/README.md` should state the package's Volume-defined purpose one line each (pull the one-line responsibility from Volume 11's package list, e.g. `ai-orchestrator`: "Execute pipeline, manage state, coordinate agents" from Volume 12).
+Each `README.md` states that package's one-line responsibility, copied from the Package Map table above.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `pnpm -r test`
-Expected: PASS for all 17 packages (Task 2's `shared-types` + these 16).
+Expected: PASS for all packages.
 
-- [ ] **Step 5: Verify dependency direction has no cycles**
+- [ ] **Step 5: Verify no dependency cycles and that provider-SDK lockdown is active**
 
-Run: `pnpm -r exec -- pnpm ls --depth=0` and manually confirm no package other than the 4 that legitimately sit above core (per Global Constraints ordering: `ai-orchestrator` may depend on the AI/engine packages; `renderer-konva`/`renderer-svg` depend on `renderer-core`; nothing depends on `ai-orchestrator`). Run `pnpm --filter '*' lint` to confirm the `import/no-cycle` rule reports nothing (there are no cross-imports yet, so this should pass trivially — this step exists to prove the lint rule is wired for Phase 2+ to catch real violations).
+Run: `pnpm run lint`
+Expected: no `import/no-cycle` errors.
 
-Expected: no cycle errors.
+Then verify the guard rail actually bites — temporarily add `import OpenAI from "openai";` to `packages/agent-core/src/index.ts` and run `pnpm --filter @sketchmind/agent-core lint`.
+Expected: FAIL with the "Provider SDKs may only be imported inside packages/llm-provider-*" message. **Remove the temporary import afterward.** This proves the LLM-independence constraint is mechanically enforced, not just documented.
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add packages
-git commit -m "feat: scaffold remaining 16 package skeletons"
+git commit -m "feat: scaffold remaining package skeletons"
 ```
 
-### Task 4: `playground` app skeleton
+### Task 4: `apps/api` skeleton
 
 **Files:**
-- Create: `apps/playground/package.json`, `apps/playground/tsconfig.json`, `apps/playground/next.config.mjs`, `apps/playground/app/page.tsx`, `apps/playground/tests/page.test.tsx`
+- Create: `apps/api/{package.json,tsconfig.json,src/server.ts,src/routes/health.ts,tests/health.test.ts}`, `.env.example`
 
 **Interfaces:**
-- Consumes: `@sketchmind/shared-types` `PACKAGE_NAME` (Task 2) — proves an `apps/*` workspace member can import a `packages/*` workspace member, validating the `Applications → Core Packages` dependency direction end to end.
-- Produces: a running Next.js dev server at `apps/playground`, which later phases use to manually drive `superpowers:run` checks against real pipeline output.
+- Consumes: `@sketchmind/shared-types`.
+- Produces: a running Fastify server with `GET /health`, and the `.env.example` contract that Phase 3's Azure adapter reads.
 
 - [ ] **Step 1: Write the failing test**
 
-`apps/playground/tests/page.test.tsx`
+`apps/api/tests/health.test.ts`
 
-```tsx
+```ts
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
-import Page from "../app/page";
+import { buildServer } from "../src/server";
 
-describe("playground home page", () => {
-  it("renders the shared-types package name", () => {
-    render(<Page />);
-    expect(screen.getByText("@sketchmind/shared-types")).toBeTruthy();
+describe("api health endpoint", () => {
+  it("returns ok with the shared-types version", async () => {
+    const app = buildServer();
+    const res = await app.inject({ method: "GET", url: "/health" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ status: "ok" });
+    await app.close();
   });
 });
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `pnpm --filter playground test`
-Expected: FAIL — `apps/playground` doesn't exist yet.
+Run: `pnpm --filter @sketchmind/api test`
+Expected: FAIL — `apps/api` does not exist.
 
-- [ ] **Step 3: Scaffold the app**
+- [ ] **Step 3: Scaffold the server**
 
-`apps/playground/package.json`
+`apps/api/package.json`
 
 ```json
 {
-  "name": "playground",
-  "private": true,
+  "name": "@sketchmind/api",
   "version": "0.0.1",
+  "private": true,
+  "type": "module",
   "scripts": {
-    "dev": "next dev",
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "test": "vitest run",
+    "lint": "eslint src",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@sketchmind/shared-types": "workspace:*",
+    "fastify": "^4.28.0"
+  },
+  "devDependencies": { "tsx": "^4.16.0" }
+}
+```
+
+`apps/api/tsconfig.json`
+
+```json
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "outDir": "dist", "rootDir": "src" },
+  "include": ["src"]
+}
+```
+
+`apps/api/src/routes/health.ts`
+
+```ts
+import type { FastifyInstance } from "fastify";
+import { PACKAGE_VERSION } from "@sketchmind/shared-types";
+
+export function registerHealth(app: FastifyInstance): void {
+  app.get("/health", async () => ({ status: "ok", sharedTypes: PACKAGE_VERSION }));
+}
+```
+
+`apps/api/src/server.ts`
+
+```ts
+import Fastify, { type FastifyInstance } from "fastify";
+import { registerHealth } from "./routes/health";
+
+export function buildServer(): FastifyInstance {
+  const app = Fastify({ logger: true });
+  registerHealth(app);
+  return app;
+}
+
+if (process.env.NODE_ENV !== "test") {
+  const app = buildServer();
+  app.listen({ port: Number(process.env.PORT ?? 3001) });
+}
+```
+
+- [ ] **Step 4: Write `.env.example` (repo root)**
+
+```bash
+# ---- Azure OpenAI (AI Foundry) ----
+# The ONLY provider config read by packages/llm-provider-azure-openai.
+AZURE_OPENAI_ENDPOINT=https://<your-resource>.openai.azure.com/
+AZURE_OPENAI_DEPLOYMENT=<your-deployment-name>
+AZURE_OPENAI_API_VERSION=<verify current GA version at implementation time>
+
+# Auth: use EITHER an API key OR Entra ID (managed identity / DefaultAzureCredential).
+# Prefer Entra ID in deployed environments; key is fine for local dev.
+AZURE_OPENAI_API_KEY=
+AZURE_OPENAI_USE_ENTRA_ID=false
+
+# ---- Provider selection ----
+# Swapping this value is the ONLY change needed to change LLM.
+SKETCHMIND_LLM_PROVIDER=azure-openai
+
+# ---- Server ----
+PORT=3001
+```
+
+Confirm `.env` is gitignored (it already is — `.gitignore` has `.env` and `.env.*` with `!.env.example`).
+
+- [ ] **Step 5: Run test to verify it passes**
+
+Run: `pnpm --filter @sketchmind/api test`
+Expected: PASS
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add apps/api .env.example
+git commit -m "feat(api): scaffold Fastify server with health route"
+```
+
+### Task 5: `apps/web` skeleton
+
+**Files:**
+- Create: `apps/web/{package.json,tsconfig.json,next.config.mjs,app/page.tsx,app/layout.tsx,tests/page.test.tsx}`
+
+**Interfaces:**
+- Consumes: `@sketchmind/shared-types` — proving `apps/* → packages/*` dependency direction works end to end.
+- Produces: the frontend shell that Phase 8 grows into the real whiteboard UI.
+
+- [ ] **Step 1: Write the failing test**
+
+`apps/web/tests/page.test.tsx`
+
+```tsx
+import { describe, it, expect } from "vitest";
+import { render, screen } from "@testing-library/react";
+import Page from "../app/page";
+
+describe("web home page", () => {
+  it("renders the app title", () => {
+    render(<Page />);
+    expect(screen.getByText("SketchMind")).toBeTruthy();
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pnpm --filter @sketchmind/web test`
+Expected: FAIL — `apps/web` does not exist.
+
+- [ ] **Step 3: Scaffold the app**
+
+`apps/web/package.json`
+
+```json
+{
+  "name": "@sketchmind/web",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3000",
     "build": "next build",
     "test": "vitest run",
     "lint": "eslint app",
@@ -440,7 +647,7 @@ Expected: FAIL — `apps/playground` doesn't exist yet.
 }
 ```
 
-`apps/playground/tsconfig.json`
+`apps/web/tsconfig.json`
 
 ```json
 {
@@ -450,120 +657,72 @@ Expected: FAIL — `apps/playground` doesn't exist yet.
 }
 ```
 
-`apps/playground/next.config.mjs`
+`apps/web/next.config.mjs`
 
 ```js
 /** @type {import('next').NextConfig} */
-export default {};
+export default { transpilePackages: ["@sketchmind/shared-types"] };
 ```
 
-`apps/playground/app/page.tsx`
+`apps/web/app/layout.tsx`
 
 ```tsx
-import { PACKAGE_NAME } from "@sketchmind/shared-types";
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>{children}</body>
+    </html>
+  );
+}
+```
 
+`apps/web/app/page.tsx`
+
+```tsx
 export default function Page() {
-  return <main>{PACKAGE_NAME}</main>;
+  return <main><h1>SketchMind</h1></main>;
 }
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `pnpm --filter playground test`
+Run: `pnpm --filter @sketchmind/web test`
 Expected: PASS
 
-- [ ] **Step 5: Verify dev server boots**
+- [ ] **Step 5: Verify both apps boot together**
 
-Run: `pnpm --filter playground dev` (background), then check `http://localhost:3000` renders `@sketchmind/shared-types`. Stop the dev server after confirming.
+Run: `pnpm run dev`
+Expected: web on `http://localhost:3000` rendering "SketchMind"; api on `http://localhost:3001/health` returning `{"status":"ok",...}`. Stop both after confirming.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add apps/playground
-git commit -m "feat(playground): scaffold Next.js app consuming shared-types"
+git add apps/web
+git commit -m "feat(web): scaffold Next.js frontend shell"
 ```
 
-### Task 5: Root-level `tests/`, `configs/`, `tools/`, `scripts/`, `examples/` placeholders
+### Task 6: Root directory placeholders and CI
 
 **Files:**
-- Create: `tests/README.md`, `configs/README.md`, `tools/README.md`, `scripts/README.md`, `examples/README.md`
-
-**Interfaces:**
-- Consumes: nothing.
-- Produces: directories that Phase 2+ plans will populate (`tests/` for cross-package contract/integration/system tests per Volume 17; `configs/` for centralized AI-provider/renderer/feature-flag config per Volume 11; `examples/` for sample Diagram ASTs used in snapshot tests per Volume 17).
-
-- [ ] **Step 1: Write each README stating the directory's purpose**
-
-`tests/README.md`
-
-```markdown
-# tests/
-
-Root-level contract, integration, and end-to-end tests that span multiple
-packages. Package-local unit tests live in `packages/<name>/tests/`
-(Volume 11 §Testing Strategy, Volume 17).
-```
-
-`configs/README.md`
-
-```markdown
-# configs/
-
-Centralized configuration: AI provider selection, renderer selection,
-feature flags, logging, cache, plugin registry. No package should read
-config from global state directly — config is injected (Volume 11
-§Configuration, Volume 12 §Configuration).
-```
-
-`tools/README.md`
-
-```markdown
-# tools/
-
-Internal developer tooling (codegen, schema generators, migration
-scripts) that isn't published as a package.
-```
-
-`scripts/README.md`
-
-```markdown
-# scripts/
-
-One-off and CI automation scripts (release, changelog, benchmark
-runners).
-```
-
-`examples/README.md`
-
-```markdown
-# examples/
-
-Sample Diagram ASTs, Stroke ASTs, and rendered outputs used as fixtures
-for snapshot and regression tests (Volume 17 §Snapshot Testing).
-```
-
-- [ ] **Step 2: Verify no build/test impact**
-
-Run: `pnpm -r build && pnpm -r test`
-Expected: PASS (unchanged — these are docs-only additions).
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add tests/README.md configs/README.md tools/README.md scripts/README.md examples/README.md
-git commit -m "docs: add purpose READMEs for root-level directories"
-```
-
-### Task 6: CI quality gate
-
-**Files:**
-- Create: `.github/workflows/ci.yml`
+- Create: `tests/README.md`, `configs/README.md`, `tools/README.md`, `scripts/README.md`, `examples/README.md`, `.github/workflows/ci.yml`
 
 **Interfaces:**
 - Consumes: root `build`/`lint`/`test`/`typecheck` scripts (Task 1).
-- Produces: a CI gate that every subsequent phase's PRs must pass — this is the automated form of Volume 17's "Continuous Quality Gates" (all unit tests pass, no schema violations, reject builds that fail validation).
+- Produces: the automated form of Volume 17's "Continuous Quality Gates" that every later phase's PRs must pass.
 
-- [ ] **Step 1: Write the workflow**
+- [ ] **Step 1: Write the directory READMEs**
+
+`tests/README.md` — root-level contract, integration, and end-to-end tests spanning packages; package-local unit tests live in `packages/<name>/tests/` (Volume 11, 17).
+
+`configs/README.md` — centralized config: LLM provider selection, renderer selection, feature flags, logging, cache, plugin registry. Config is injected, never read from global state (Volume 11, 12).
+
+`tools/README.md` — internal developer tooling (codegen, schema generators, migrations), not published.
+
+`scripts/README.md` — CI and one-off automation (release, changelog, benchmark runners).
+
+`examples/README.md` — sample Diagram ASTs, Stroke ASTs, and rendered outputs used as snapshot/regression fixtures (Volume 17).
+
+- [ ] **Step 2: Write the CI workflow**
 
 `.github/workflows/ci.yml`
 
@@ -590,215 +749,364 @@ jobs:
       - run: pnpm run test
 ```
 
-- [ ] **Step 2: Verify locally**
+- [ ] **Step 3: Verify locally**
 
 Run: `pnpm install --frozen-lockfile && pnpm run lint && pnpm run typecheck && pnpm run build && pnpm run test`
-Expected: all four commands PASS, mirroring what CI will run.
+Expected: all four PASS, mirroring CI.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add .github/workflows/ci.yml
-git commit -m "ci: add lint/typecheck/build/test quality gate"
+git add tests/README.md configs/README.md tools/README.md scripts/README.md examples/README.md .github/workflows/ci.yml
+git commit -m "chore: add directory READMEs and CI quality gate"
 ```
 
 ### Phase 1 Acceptance Criteria
 
 - [ ] `pnpm install` succeeds from a clean clone.
-- [ ] `pnpm run build` builds all 17 packages + `playground` with no errors.
-- [ ] `pnpm run lint` passes, and the `import/no-cycle` / `no-restricted-imports` rules are active.
-- [ ] `pnpm run test` passes for all packages.
-- [ ] `apps/playground` boots via `pnpm --filter playground dev` and renders a value imported from `@sketchmind/shared-types`.
-- [ ] CI workflow runs the same four commands and passes on push.
-- [ ] Every `packages/*` directory has the skeleton from Volume 11 (`package.json`, `tsconfig.json`, `src/index.ts`, `tests/`, `README.md`).
+- [ ] `pnpm run build` builds all packages + both apps with no errors.
+- [ ] `pnpm run lint` passes, with `import/no-cycle` and the provider-SDK restriction both active and **proven to fail** when violated (Task 3 Step 5).
+- [ ] `pnpm run test` passes for all packages and apps.
+- [ ] `pnpm run dev` boots `apps/web` (:3000) and `apps/api` (:3001) together.
+- [ ] `.env.example` documents the full Azure OpenAI contract; no secrets are committed.
+- [ ] CI runs the same four commands and passes.
 
-This matches Volume 18 Phase 1's deliverable: "Repository builds successfully."
+Matches Volume 18 Phase 1: "Repository builds successfully."
 
 ---
 
 ## Phase 2 — Core Models
 
-**Maps to:** Volume 04 (Diagram AST), Volume 13 (VIL), Volume 14 (Shape Graph & Constraint Grammar), Volume 12 (Package Contracts), Volume 18 Phase 2.
+**Maps to:** Volumes 04, 13, 14, 12; Volume 18 Phase 2.
+**Deliverable:** "Models compile and validate."
 
-**Deliverable:** "Models compile and validate" — every shared model type exists in `@sketchmind/shared-types` with a runtime validator, and downstream packages can import and construct them.
+**Packages:** `shared-types` (types + Zod schemas), `diagram-ast` (builder + validator), `utilities`.
 
-**Packages touched:** `shared-types` (models + Zod schemas), `diagram-ast` (builder API + validator per Volume 04 Deliverables), `shape-intelligence` (Shape Graph schema per Volume 14).
+**Models to implement** — each a TS type + Zod schema in `shared-types`:
 
-**Models to implement (each as a TS type + Zod schema in `shared-types`, per Volume 12 §Common Models):**
-- `IntentModel` (Volume 03: intent, domain, diagram category)
-- `VisualPlan` (Volume 03: objects, labels, highlights, animations, level of detail — no geometry)
-- `VIL` document (Volume 13: version, intent, subject, context, objects, relationships, annotations, emphasis, metadata)
-- `ShapeGraph` (Volume 10, 14: nodes, edges, no geometry; node = id/type/category/role/metadata/behaviors/anchors/constraints)
-- `DiagramAST` (Volume 04: id, version, subject, title, objects, relationships, groups, annotations, metadata; object = id/type/name/category/properties/anchors/behaviors/labels/children)
-- `ConstraintGraph` (Volume 05: nodes = objects, edges = constraints; constraint types: position/alignment/containment/connectivity/distribution/rotation/orientation/spacing/scaling/visibility)
-- `LayoutModel` (Volume 05: coordinates, dimensions, rotation, bounding boxes, connector paths — the *only* model allowed to contain geometry, per Global Constraints)
-- `StrokeAST` (Volume 06: id/type/target object/order/dependencies/style/timing/metadata per stroke; stroke types: line/curve/arc/circle/ellipse/rectangle/polygon/freehand/arrow/text/hatch/erase)
-- `RuntimeEvent` union (Volume 09, 12, 16: PipelineStarted/StageStarted/StageCompleted/ValidationFailed/StrokeStarted/StrokeCompleted/RenderingFinished/SessionStarted/SessionCompleted/SessionFailed/PlaybackPaused, etc.)
+| Model | Source | Notes |
+|---|---|---|
+| `IntentModel` | V03 | intent, domain, diagram category, complexity, teaching objective |
+| `VisualPlan` | V03 | objects, labels, highlights, animations, level of detail — no geometry |
+| `VIL` | V13 | version, intent, subject, context, objects, relationships, annotations, emphasis, metadata |
+| `ShapeGraph` | V10, V14 | nodes (id/type/category/role/metadata/behaviors/anchors/constraints) + edges |
+| `DiagramAST` | V04 | id, version, subject, title, objects, relationships, groups, annotations, metadata |
+| `ConstraintGraph` | V05, V14 | nodes = objects, edges = constraints (15 constraint types from V14) |
+| `LayoutModel` | V05 | **the only model with geometry**: coordinates, dimensions, rotation, bboxes, connector paths |
+| `StrokeAST` | V06 | per stroke: id/type/target/order/dependencies/style/timing/metadata; 12 stroke types |
+| `RuntimeEvent` | V09, V12, V16 | discriminated union of all lifecycle events |
+| `SketchMindError` | V12 | `{ code, message, package, stage, recoverable }` |
+| **`AgentTrace`** | new | per agent step: `{ stepId, agent: "server"\|"client", thought?, toolName?, toolArgs?, toolResult?, tokens, durationMs, timestamp }` — streamed to the UI |
 
-**Validation layer:** every model gets a `validate<Model>(input: unknown): Result<Model, ValidationError[]>` function per Volume 04 §Validation Rules / Volume 17. `ValidationError` shape (per Volume 12 §Error Contracts): `{ code, message, package, stage, recoverable }`.
-
-**Diagram AST builder API:** fluent/programmatic builder in `diagram-ast` package per Volume 04 Deliverables item 5, so Phase 3's Diagram Reasoner doesn't hand-construct raw objects.
+**Validation layer:** `validate<Model>(input: unknown): Result<Model, SketchMindError[]>` for each (V04, V17).
 
 **Acceptance criteria:**
-- [ ] Every model above exists as an exported TS type + Zod schema in `@sketchmind/shared-types`, and nowhere else (enforces "no duplicate models across packages").
-- [ ] `diagram-ast` exposes `buildDiagramAST(...)` and `validateDiagramAST(...)`; round-tripping a hand-built AST through both produces no errors.
-- [ ] `shape-intelligence` exposes `validateShapeGraph(...)` implementing Volume 14 §Validation (connected graph, valid constraints, required nodes/anchors).
-- [ ] Contract tests in root `tests/` prove: an AST with a duplicate id fails validation; an AST with an orphan object fails validation; a Shape Graph with an unknown constraint type fails validation — matching Volume 04 §Validation Rules and Volume 14 §Validation.
-- [ ] No model contains geometry except `LayoutModel` (a static test/lint rule asserting no `x`/`y`/`width`/`height`/`rotation` fields exist on `DiagramAST`, `ShapeGraph`, or `ConstraintGraph` types is worth adding here).
-
-**Before starting:** run `superpowers:writing-plans` again to turn the model list above into bite-sized TDD tasks per model, now that Phase 1's real package skeletons exist to build against.
+- [ ] Every model exists as an exported type + Zod schema in `shared-types` and nowhere else.
+- [ ] `diagram-ast` exposes `buildDiagramAST(...)` and `validateDiagramAST(...)`; a hand-built AST round-trips cleanly.
+- [ ] Contract tests prove: duplicate id fails; orphan object fails; unknown constraint type fails (V04 §Validation Rules, V14 §Validation).
+- [ ] An automated test asserts no geometry fields (`x`/`y`/`width`/`height`/`rotation`) exist on `DiagramAST`, `ShapeGraph`, `VisualPlan`, or `ConstraintGraph` — mechanically enforcing the Global Constraint.
 
 ---
 
-## Phase 3 — AI Layer
+## Phase 3 — LLM Provider Abstraction + Azure OpenAI
 
-**Maps to:** Volume 03 (AI Reasoning Engine), Volume 10 (Shape Intelligence Engine), Volume 15 (Prompt Contracts), Volume 09 (Orchestration, partial), Volume 18 Phase 3.
+**Maps to:** V03 §Multi-LLM Support, V09 §Provider Abstraction, V15 §Multi-Provider Support. **This is the "plug any LLM anytime" phase.**
+**Deliverable:** a live Azure OpenAI call returning schema-valid structured JSON through an interface that knows nothing about Azure.
 
-**Deliverable:** "Natural language → Diagram AST" — a real, working (if minimal) path from a text request through one live LLM provider to a validated `DiagramAST`.
+**Packages:** `llm-provider`, `llm-provider-azure-openai`, `llm-provider-anthropic`.
 
-**Packages touched:** `intent-analyzer`, `visual-planner`, `shape-intelligence`, `diagram-reasoner`, `ai-orchestrator` (provider adapters + prompt repository only — full orchestration is Phase 8).
+### The interface (`packages/llm-provider`)
 
-**Agent contracts to implement (exact input/output per Volume 12 §Core Package Contracts and Volume 15 §Agent Contracts):**
-- `intent-analyzer`: `analyze(text: string): IntentModel` — never returns graphics.
-- `visual-planner`: `plan(intent: IntentModel): VisualPlan` — decides what should appear only.
-- `shape-intelligence`: `reason(plan: VisualPlan): ShapeGraph` (+ any newly generated `PrimitiveDefinition`s per Volume 10 §Primitive Generation) — reasons about structure only; must first attempt primitive discovery against the registry before generating new primitives (Volume 10 §Primitive Discovery).
-- `diagram-reasoner`: `compose(graph: ShapeGraph): DiagramAST` — must not produce coordinates.
+```ts
+export interface LLMCapabilities {
+  structuredOutput: boolean;   // native JSON-schema-constrained output
+  toolCalling: boolean;
+  parallelToolCalls: boolean;
+  streaming: boolean;
+  maxContextTokens: number;
+}
 
-**Prompt repository (`ai-orchestrator`, per Volume 15 Deliverables):** one versioned prompt module per agent above, each following the Standard Prompt Template (System Instructions, Agent Objective, Allowed Inputs, Expected Output, Forbidden Output, Completion Rules) and shipping few-shot examples (minimum, complex, invalid, recovery) per Volume 15 §Few-shot Examples.
+export interface LLMProvider {
+  readonly id: string;                       // "azure-openai" | "anthropic" | ...
+  readonly capabilities: LLMCapabilities;
 
-**Provider abstraction:** a single `LLMProvider` interface in `ai-orchestrator` with one concrete adapter wired live for the MVP (pick one of OpenAI/Anthropic/Gemini) and stub adapters for the others satisfying the same interface, so swapping providers later requires no changes outside the adapter (Volume 03 §Multi-LLM Support, Volume 09 §Provider Abstraction).
+  complete(req: CompletionRequest): Promise<CompletionResponse>;
+  completeStructured<T>(req: StructuredRequest<T>): Promise<StructuredResponse<T>>;
+  stream(req: CompletionRequest): AsyncIterable<CompletionChunk>;
+}
+```
 
-**Retry strategy:** retry only AI stages, only on schema-invalid / missing-fields / empty-response / provider-timeout (Volume 15 §Retry Strategy) — implement as a wrapper around each agent call, not inside the agents themselves.
+`completeStructured` is the workhorse: callers pass a Zod schema, and the provider either uses **native structured output** (when `capabilities.structuredOutput`) or falls back to prompt-injected JSON schema + parse-and-repair. Callers never know which happened. This is what lets a weaker local model drop in later without touching agent or pipeline code.
+
+### Azure OpenAI adapter specifics
+
+- Use the official `openai` npm SDK's `AzureOpenAI` client (the current supported path; the standalone `@azure/openai` package is legacy — **verify current guidance at implementation time**).
+- Config strictly from env per `.env.example` (Phase 1 Task 4): endpoint, deployment name, API version.
+- Auth: support **both** API key and Entra ID via `DefaultAzureCredential` / managed identity. Entra ID is the production path; key is dev convenience.
+- Structured output: use JSON-schema `response_format` where the deployed model and API version support it; set `capabilities.structuredOutput` from an explicit config/probe rather than hardcoding — AI Foundry deployments vary by model and API version.
+- Map Azure errors (429 rate limit + `Retry-After`, content filter, deployment-not-found, quota) into `SketchMindError` with correct `recoverable` flags. Content-filter rejections are **not** retryable; 429s are.
+- Never log request/response bodies containing user content at info level.
 
 **Acceptance criteria:**
-- [ ] Given `"Draw a movable pulley."`, the pipeline `intent-analyzer → visual-planner → shape-intelligence → diagram-reasoner` produces a `DiagramAST` containing at minimum the objects listed in Volume 01/02/03's worked example (ceiling, fixed pulley, movable pulley, rope, load) and passes `validateDiagramAST` from Phase 2.
-- [ ] Every agent's output is validated against its Zod schema before being passed to the next agent; a deliberately malformed provider response triggers exactly one retry then a structured, recoverable error (Volume 15 §Retry Strategy, Volume 12 §Error Contracts).
-- [ ] No agent output contains an `x`, `y`, `svg`, or `canvasCommand` field (automated schema-level check, enforcing Volume 03/13/15's "AI never produces geometry" rule).
-- [ ] Swapping the wired provider adapter for a stub adapter (same interface) does not require changes to `intent-analyzer`, `visual-planner`, `shape-intelligence`, or `diagram-reasoner`.
-
-**Before starting:** write a dedicated Phase 3 plan; it will need real decisions this document intentionally defers — which LLM provider is "live" for MVP, and the exact prompt text for each agent (Volume 15 leaves prompt content to implementation, only the contract).
+- [ ] A live integration test (skipped unless Azure env vars are present) sends a request and gets back an object matching a supplied Zod schema.
+- [ ] The same test passes against a **fake in-memory provider** implementing `LLMProvider`, with zero test-code changes — proving callers are provider-agnostic.
+- [ ] `SKETCHMIND_LLM_PROVIDER=anthropic` selects the second adapter with no code change outside config.
+- [ ] `grep -r "openai\|azure" packages/ --exclude-dir=llm-provider-azure-openai` returns no source hits outside the adapter (and CI lint enforces it, per Phase 1).
+- [ ] A provider with `structuredOutput: false` still returns schema-valid objects via the repair fallback.
+- [ ] Rate-limit (429) responses retry with backoff honoring `Retry-After`; content-filter responses fail fast as non-recoverable.
 
 ---
 
-## Phase 4 — Layout Engine
+## Phase 4 — AI Reasoning Layer
 
-**Maps to:** Volume 05 (Constraint Engine & Layout Solver), Volume 18 Phase 4.
+**Maps to:** V03, V10, V15; Volume 18 Phase 3.
+**Deliverable:** "Natural language → validated Diagram AST."
 
-**Deliverable:** "Diagram AST → Layout Model" — deterministic, geometry-producing, no AI involved.
+**Packages:** `intent-analyzer`, `visual-planner`, `shape-intelligence`, `diagram-reasoner`, plus the prompt repository.
 
-**Packages touched:** `constraint-engine`, `layout-engine`.
+**Agent contracts** (V12, V15) — each takes and returns typed models, all via `LLMProvider.completeStructured`:
+- `intent-analyzer.analyze(text) → IntentModel`
+- `visual-planner.plan(intent) → VisualPlan`
+- `shape-intelligence.reason(plan) → { graph: ShapeGraph, newPrimitives: PrimitiveDefinition[] }` — **must search the primitive registry before generating anything new** (V10 §Primitive Discovery)
+- `diagram-reasoner.compose(graph) → DiagramAST`
 
-**Pipeline:** `DiagramAST → (constraint-engine) → ConstraintGraph → (layout-engine) → LayoutModel`.
+**Prompt repository:** one versioned prompt module per agent following V15's Standard Prompt Template (System Instructions, Agent Objective, Allowed Inputs, Expected Output, Forbidden Output, Completion Rules), each shipping few-shot examples (minimum, complex, invalid, recovery). Prompts live as data files, isolated from application code (V15).
 
-**`constraint-engine` responsibilities (Volume 05 §Constraint Engine Responsibilities):** derive constraints (above/below/inside/outside/attachedTo/connectedTo/wrapsAround/centeredOn/alignedWith/parallelTo/perpendicularTo) from `DiagramAST.relationships`; produce zero geometry.
-
-**`layout-engine` responsibilities (Volume 05 §Layout Solver Responsibilities, §Layout Strategies):** consume `ConstraintGraph`, produce `LayoutModel` (position/size/rotation/bounding box/connection points per object). Implement at least 2 layout strategies for MVP (e.g. Hierarchical + Grid) selected by diagram type, with the strategy interface open for the rest (Radial/Tree/Flow/Circular/Force-directed/Manual override) to be added later without touching the engine core.
-
-**Sub-systems required by acceptance criteria below:** collision detection (object/label/connector overlap → auto-resolve), label placement (avoid overlaps, stay near target, readable), connector routing (straight minimum for MVP; orthogonal/curved/smart-avoidance are extensible, not required for MVP per Volume 05 + Volume 18 MVP Scope).
+**Retry:** retry only on schema-invalid / missing-fields / empty-response / provider-timeout (V15). Deterministic stages never retry.
 
 **Acceptance criteria:**
-- [ ] Feeding the pulley `DiagramAST` from Phase 3 through `constraint-engine` then `layout-engine` produces a `LayoutModel` where no two objects' bounding boxes overlap and every object referenced in a relationship has a computed position (Volume 05 §Validation).
-- [ ] The same `DiagramAST` input always produces the same `LayoutModel` output (determinism — Volume 05 Design Goals, Volume 02 §Expected Behavior).
-- [ ] Layout strategy selection is driven by diagram type/metadata, not hardcoded per call site.
-- [ ] `LayoutModel` is the only model in the system with numeric coordinates (cross-checked against the Phase 2 no-geometry-elsewhere rule).
+- [ ] `"Draw a movable pulley."` produces a `DiagramAST` containing at minimum ceiling, fixed pulley, movable pulley, rope, load — passing `validateDiagramAST`.
+- [ ] Every agent output is schema-validated before the next agent sees it; a deliberately malformed response triggers exactly one retry then a structured recoverable error.
+- [ ] No agent output contains `x`, `y`, `svg`, or `canvasCommand` fields (automated check).
+- [ ] All four agents run against the fake provider from Phase 3 in unit tests — no network calls in the default test suite.
 
 ---
 
-## Phase 5 — Stroke Engine
+## Phase 5 — Layout Engine
 
-**Maps to:** Volume 06 (Stroke Engine & Human Drawing Simulation), Volume 18 Phase 5.
+**Maps to:** V05; Volume 18 Phase 4.
+**Deliverable:** "Diagram AST → Layout Model." Deterministic, no AI.
 
-**Deliverable:** "Layout Model → Animated Stroke AST" — a natural, human-like drawing order with playback control, still renderer-independent.
+**Packages:** `constraint-engine`, `layout-engine`.
 
-**Packages touched:** `stroke-planner`, `stroke-runtime`.
-
-**`stroke-planner` responsibilities (Volume 06 §Stroke Planner, §Human Drawing Rules):** convert `LayoutModel` into an ordered `StrokeAST` following: large outlines before detail, labels last, connected objects drawn continuously, no unnatural pen jumps, predictable ordering. Then a **Stroke Optimizer** pass (Volume 06 §Stroke Optimizer) merges compatible strokes and removes redundancy without changing semantic meaning.
-
-**`stroke-runtime` responsibilities (Volume 06 §Stroke Runtime, §Playback State from Volume 16):** play/pause/resume/seek/replay/undo/redo/cancel, backed by a timeline model supporting delay/duration/speed/pause/dependency per stroke (Volume 06 §Stroke Timing). Support incremental/progressive rendering hooks (Volume 06 §Incremental Rendering) even though no renderer is wired until Phase 6.
-
-**Editing API (Volume 06 §Editing):** insert/delete/move/replace/reorder stroke, all deterministic.
+- `constraint-engine`: derive constraints (above/below/inside/outside/attachedTo/connectedTo/wrapsAround/centeredOn/alignedWith/parallelTo/perpendicularTo) from `DiagramAST.relationships`. Produces zero geometry.
+- `layout-engine`: solve `ConstraintGraph` → `LayoutModel` (position, size, rotation, bbox, connection points). Implement **2 strategies for MVP** (Hierarchical + Grid) behind a strategy interface open for Radial/Tree/Flow/Circular/Force-directed/Manual later. Plus collision detection (object/label/connector overlap → auto-resolve), label placement, and straight connector routing (orthogonal/curved/smart-avoidance deferred).
 
 **Acceptance criteria:**
-- [ ] The pulley `LayoutModel` from Phase 4 produces a `StrokeAST` whose order matches the documented example shape (ceiling → pulleys → rope → load → force arrow → labels last), or an equivalently justified natural order if the object set differs.
-- [ ] `stroke-runtime` can play, pause mid-sequence, resume, and replay the same `StrokeAST` deterministically (same strokes, same order, same timing) across runs.
-- [ ] Undo removes exactly the last applied stroke and redo restores it, with no side effects on unrelated strokes.
-- [ ] The Stroke Optimizer never changes which objects exist or their relationships — only stroke count/grouping (verify by diffing the pre/post-optimization object coverage, not just stroke count).
+- [ ] The pulley `DiagramAST` yields a `LayoutModel` with no overlapping bounding boxes and every relationship-referenced object positioned (V05 §Validation).
+- [ ] Identical input always yields identical output (determinism — V02, V05).
+- [ ] Strategy selection is driven by diagram type/metadata, not hardcoded at call sites.
+- [ ] `LayoutModel` remains the only model with numeric coordinates (re-run the Phase 2 check).
 
 ---
 
-## Phase 6 — Renderer
+## Phase 6 — Stroke Engine
 
-**Maps to:** Volume 08 (Renderer SDK & Multi-Backend Rendering), Volume 18 Phase 6.
+**Maps to:** V06; Volume 18 Phase 5.
+**Deliverable:** "Layout Model → animated Stroke AST." Still renderer-independent.
 
-**Deliverable:** "Animated whiteboard rendering" — the first real pixels, via Konva, driven purely by `stroke-runtime` playback events.
+**Packages:** `stroke-planner`, `stroke-runtime`.
 
-**Packages touched:** `renderer-core` (SDK/adapter contract, layer manager, viewport, hit-testing, registry — backend agnostic), `renderer-konva` (first concrete backend).
-
-**`renderer-core` responsibilities (Volume 08 §Renderer Adapter, §Layer Model, §Viewport, §Hit Testing):** define the adapter interface (`initialize/destroy/drawStroke/eraseStroke/updateStroke/renderFrame/resizeViewport/export`) and layer model (Background/Grid/Shapes/Connectors/Labels/Highlights/Animations/Debug) that every backend implements identically.
-
-**`renderer-konva` responsibilities:** implement the `renderer-core` adapter interface against Konva; must reject any responsibility outside Volume 08's "must NOT" list (no AI calls, no layout computation, no Stroke AST mutation, no business rules).
-
-**Export (MVP subset per Volume 18 MVP Scope "Export"):** PNG at minimum; SVG/PDF/JSON/replay-package are extensible follow-ons per Volume 08 §Export, not required to close this phase.
+- `stroke-planner`: `LayoutModel` → ordered `StrokeAST` following V06 §Human Drawing Rules — large outlines first, detail after, labels last, connected objects drawn continuously, no unnatural pen jumps, predictable order. Then a **Stroke Optimizer** pass that merges compatible strokes without changing semantic meaning.
+- `stroke-runtime`: play/pause/resume/seek/replay/undo/redo/cancel over a timeline model (delay, duration, speed, pause, dependencies). Exposes progressive-rendering hooks and the editing API (insert/delete/move/replace/reorder), all deterministic.
 
 **Acceptance criteria:**
-- [ ] `renderer-konva` correctly initializes, draws every stroke from the Phase 5 pulley `StrokeAST` in order, and matches a checked-in reference PNG within a defined pixel-diff tolerance (Volume 17 §Snapshot Testing "Final Render").
-- [ ] Play/pause/resume from `stroke-runtime` visibly starts/stops/continues progressive drawing in `apps/playground`.
-- [ ] `renderer-konva` contains zero imports from `ai-orchestrator`, `intent-analyzer`, `visual-planner`, `shape-intelligence`, `diagram-reasoner`, `constraint-engine`, or `layout-engine` (lint-enforced via the dependency-direction rule from Phase 1).
-- [ ] Export to PNG produces a file; re-importing/inspecting it confirms all drawn objects are present.
-- [ ] Manually verified in `apps/playground` per the `run` skill: start the dev server, drive a real request through the pipeline, and watch it draw.
+- [ ] The pulley `LayoutModel` yields a natural stroke order (ceiling → pulleys → rope → load → force arrow → labels last).
+- [ ] Play, pause mid-sequence, resume, and replay are deterministic across runs (same strokes, order, timing).
+- [ ] Undo removes exactly the last stroke; redo restores it; no side effects elsewhere.
+- [ ] The optimizer never changes which objects exist — verified by diffing pre/post object coverage, not stroke count.
 
 ---
 
-## Phase 7 — Plugin System
+## Phase 7 — Renderer
 
-**Maps to:** Volume 07 (Educational Primitive SDK & Plugin System), Volume 18 Phase 7.
+**Maps to:** V08; Volume 18 Phase 6.
+**Deliverable:** first real pixels, via Konva, driven purely by `stroke-runtime` events.
 
+**Packages:** `renderer-core`, `renderer-konva`, `renderer-svg` (skeleton), `export-engine` (PNG).
+
+- `renderer-core`: adapter interface (`initialize/destroy/drawStroke/eraseStroke/updateStroke/renderFrame/resizeViewport/export`), layer model (Background/Grid/Shapes/Connectors/Labels/Highlights/Animations/Debug), viewport (pan/zoom/fit/center), hit-testing (object/anchor/stroke/region/hover), renderer registry.
+- `renderer-konva`: implement the adapter against Konva. Must honor V08's "must NOT" list — no AI calls, no layout computation, no Stroke AST mutation, no business rules.
+- `renderer-svg`: skeleton implementing the same interface, enough to prove backend-agnosticism (not production in MVP).
+
+**Acceptance criteria:**
+- [ ] `renderer-konva` draws every stroke of the pulley `StrokeAST` in order and matches a checked-in reference PNG within a pixel-diff tolerance (V17 §Snapshot Testing).
+- [ ] Play/pause/resume from `stroke-runtime` visibly controls progressive drawing.
+- [ ] `renderer-konva` imports nothing from any AI, agent, constraint, or layout package (lint-enforced).
+- [ ] PNG export produces a file containing all drawn objects.
+- [ ] Hit-testing returns the correct object id when clicking a rendered component — **required for the client agent in Phase 10.**
+
+---
+
+## Phase 8 — Web Application + Streaming Protocol
+
+**Maps to:** V09 §Streaming, V16 §Event Bus; new requirement (frontend for real testing).
+**Deliverable:** **the first end-to-end testable slice** — type a request in the browser, watch it draw live.
+
+**Packages/apps:** `session-protocol`, `apps/api`, `apps/web`.
+
+### `session-protocol`
+
+The typed contract between browser and server. Two directions:
+
+- **Server → Client events:** `SessionStarted`, `StageStarted`, `StageCompleted`, `ValidationFailed`, `DiagramASTReady`, `LayoutReady`, `StrokeGenerated`, `AgentStep` (an `AgentTrace`), `SessionCompleted`, `SessionFailed`.
+- **Client → Server commands:** `StartSession`, `CancelSession`, `AgentToolProxy` (client agent requesting an LLM turn), `FollowUpRequest`.
+
+Transport: SSE for server→client streaming, plain POST for client→server commands (WebSocket is a drop-in later; the protocol is transport-agnostic by design).
+
+### `apps/api`
+
+Routes: `POST /api/sessions` (start), `GET /api/sessions/:id/stream` (SSE), `POST /api/sessions/:id/cancel`, `POST /api/agent/llm` (**the client-agent LLM proxy — this is why Azure keys never reach the browser**).
+
+### `apps/web`
+
+- Prompt input box
+- Whiteboard canvas mounting `renderer-konva`
+- Playback controls (play/pause/speed/replay/undo/redo)
+- **Agent trace panel** — live view of every agent step (thought, tool, args, result, timing, tokens). This is your primary debugging surface.
+- Diagram inspector — the Diagram AST / Layout Model / Stroke AST as inspectable JSON per session
+
+**Acceptance criteria:**
+- [ ] Typing "Draw a movable pulley" in the browser draws it on the canvas, live, stroke by stroke.
+- [ ] The trace panel shows every pipeline stage with timing as it happens.
+- [ ] Cancel mid-draw stops the pipeline promptly and leaves no dangling session.
+- [ ] The inspector shows a valid Diagram AST for the drawn diagram.
+- [ ] No Azure credential, endpoint, or provider SDK appears in any browser bundle (verify by inspecting the built client bundle).
+- [ ] Manually verified via the `run` skill.
+
+---
+
+## Phase 9 — Server-Side Agent
+
+**Maps to:** V09 (orchestration as an agent), V10 (primitive generation/learning); new requirement.
+**Deliverable:** the server stops being a fixed assembly line and becomes an agent that can loop, self-check, and revise.
+
+**Packages:** `agent-core`, `agent-tools-server`.
+
+### `agent-core` (shared by both agents)
+
+The loop: `observe → reason (LLM) → select tool → execute → observe → …` until goal or budget exhausted. Provides: tool registry with Zod-typed args, step budget + token budget + wall-clock timeout, cancellation token, structured `AgentTrace` emission per step, error recovery (tool failure → observation, not crash). Depends on `llm-provider` — **never on a specific provider.**
+
+### `agent-tools-server`
+
+The tool surface. Each is a typed, validated function the agent may call:
+
+| Tool | Purpose |
+|---|---|
+| `analyze_intent` | run Intent Analyzer |
+| `plan_visual` | run Visual Planner |
+| `search_primitives` | query the registry before inventing anything |
+| `generate_primitive` | create + register a new semantic primitive (V10) |
+| `build_shape_graph` | run Shape Intelligence |
+| `compose_diagram_ast` | run Diagram Reasoner |
+| `validate_diagram` | run validators, get structured errors back |
+| `compute_layout` | run constraint + layout engines |
+| `critique_layout` | inspect the `LayoutModel` for overlaps/crowding/imbalance and report — **lets the agent judge its own output and retry** |
+| `plan_strokes` | run Stroke Planner |
+
+The critical capability this unlocks: the agent computes a layout, critiques it, decides the diagram is too sparse or components are mispositioned, and goes *back* to revise the Diagram AST — something the linear pipeline structurally cannot do.
+
+**Acceptance criteria:**
+- [ ] The server agent completes the pulley request end to end using tools only, with a full trace.
+- [ ] Given a deliberately under-specified request ("draw a pulley thing"), the agent asks `search_primitives`, finds nothing suitable, calls `generate_primitive`, and proceeds — visible in the trace.
+- [ ] When `critique_layout` reports overlaps, the agent revises rather than shipping the bad layout (test with a seeded crowded diagram).
+- [ ] Step/token/time budgets are enforced — a pathological request terminates cleanly with a partial result, never an infinite loop.
+- [ ] The agent runs identically against the fake provider and Azure OpenAI.
+
+---
+
+## Phase 10 — Client-Side Agent
+
+**Maps to:** new requirement.
+**Deliverable:** an agent in the browser that acts on the board on its own.
+
+**Packages:** `agent-tools-canvas`, `client-agent`.
+
+### `agent-tools-canvas`
+
+Tools over the already-rendered diagram — the client agent's hands:
+
+| Tool | Purpose |
+|---|---|
+| `highlight_object` / `clear_highlights` | draw attention to a component |
+| `zoom_to` / `fit_to_content` | viewport control |
+| `annotate` | add a callout/label to an existing object |
+| `pause_playback` / `resume_playback` / `set_speed` | pacing |
+| `erase_object` / `redraw_object` | local correction without a full redraw |
+| `select_object` / `query_diagram` | read the current Diagram AST + what's on screen |
+| `request_server_extension` | ask the server agent to extend the diagram (new components) |
+
+Everything here operates through `renderer-core` and `stroke-runtime` public APIs — the client agent never touches Konva directly.
+
+### `client-agent`
+
+Uses `agent-core` with the canvas tools. Its LLM turns go through `POST /api/agent/llm` — **no keys, no provider SDK in the browser.**
+
+Scenarios it handles autonomously:
+- User clicks the rope → agent highlights it, zooms, annotates an explanation.
+- User asks a follow-up ("now show the effort direction") → agent decides whether it can annotate locally or must call `request_server_extension`. Annotating an existing diagram instead of redrawing from scratch is the main win.
+- Presentation pacing — pause on complex components, highlight in teaching order.
+- User says "that label is in the way" → agent moves it locally.
+
+**Acceptance criteria:**
+- [ ] Clicking a rendered component triggers the client agent to highlight and explain it, with no full redraw.
+- [ ] A follow-up that only needs annotation is handled entirely client-side (verified: no new server session in the network log).
+- [ ] A follow-up needing new components correctly escalates via `request_server_extension`.
+- [ ] Client agent steps appear in the same trace panel as server steps, distinguished by `agent: "client"`.
+- [ ] Client agent budgets are enforced; a runaway loop terminates.
+- [ ] The built browser bundle contains no provider SDK and no credentials (automated bundle check in CI).
+
+---
+
+## Phase 11 — Plugin System
+
+**Maps to:** V07; Volume 18 Phase 7.
 **Deliverable:** "External primitives load without modifying the core."
 
-**Packages touched:** `primitive-sdk`, `plugin-sdk`.
+**Packages:** `primitive-sdk`, `plugin-sdk`.
 
-**`primitive-sdk` responsibilities (Volume 07 §Primitive Package, §Manifest, §Primitive Registry):** manifest schema (id/name/version/category/author/license/dependencies/supportedRenderers/supportedBehaviors), package validation pipeline (manifest/schema/anchors/behaviors/constraints/examples — invalid primitives must not load), and a registry (register/resolve versions/discover/validate dependencies/load).
-
-**`plugin-sdk` responsibilities (Volume 07 §Plugin System, §Subject Packs):** generic plugin loading (register/discover/lazy-load/hot-reload where feasible) for the plugin categories Volume 07 lists — subject packs, primitive packs, renderers, layout strategies, stroke generators, exporters — all communicating through public interfaces only.
+- `primitive-sdk`: manifest schema (id/name/version/category/author/license/dependencies/supportedRenderers/supportedBehaviors), validation pipeline (manifest/schema/anchors/behaviors/constraints/examples — invalid primitives must not load), registry (register/resolve versions/discover/validate deps/load).
+- `plugin-sdk`: plugin loading for subject packs, primitive packs, renderers, layout strategies, stroke generators, exporters — public interfaces only.
 
 **Acceptance criteria:**
-- [ ] A hand-authored example primitive package (e.g. "Gear", per Volume 10's worked example) registers via `primitive-sdk` without any change to `diagram-ast`, `constraint-engine`, `layout-engine`, `stroke-planner`, or any renderer package.
-- [ ] `shape-intelligence`'s primitive-discovery step (Phase 3) finds and reuses the example primitive instead of generating a new one when the same concept is requested twice — proving Volume 10 §Primitive Discovery's "search registry before generating" rule actually closes the loop with the SDK built here.
-- [ ] An intentionally invalid primitive package (missing required anchor) is rejected at load time with a structured error, never reaching the registry.
-- [ ] `renderer-konva` (Phase 6) can be loaded through the same `plugin-sdk` registration path used for the example primitive, proving the plugin mechanism is renderer-agnostic as required (Volume 07 "Do not couple plugins to renderer implementations").
+- [ ] A hand-authored example primitive ("Gear") registers with no change to any core package.
+- [ ] The Phase 9 `search_primitives` tool finds and reuses it — the same concept requested twice generates a primitive once and reuses it the second time. **This closes V10's learning loop.**
+- [ ] An invalid primitive (missing required anchor) is rejected at load with a structured error, never reaching the registry.
+- [ ] `renderer-konva` loads through the same plugin path, proving renderer-agnosticism.
 
 ---
 
-## Phase 8 — End-to-End Integration
+## Phase 12 — End-to-End Integration & MVP Close
 
-**Maps to:** Volume 09 (AI Drawing Pipeline & Orchestration, full), Volume 16 (Runtime State Management), Volume 17 (Testing/QA, system-level), Volume 18 Phase 8.
+**Maps to:** V09 (full), V16, V17, Volume 18 Phase 8.
+**Deliverable:** everything wired, observable, recoverable, benchmarked.
 
-**Deliverable:** the full pipeline — `AI → Layout → Stroke → Renderer` — connected end to end through `ai-orchestrator`, driven by real runtime state, observable, and validated.
+**Packages:** `ai-orchestrator` (now full), all packages as participants.
 
-**Packages touched:** `ai-orchestrator` (now the full orchestrator, not just provider adapters/prompts from Phase 3), all packages as integration participants.
+Work not covered earlier:
+- Orchestrator running the full stage sequence with a validation gate after every stage (V09).
+- Session / Execution Context / Pipeline State / Drawing State / Playback State / Renderer State as **distinct, non-merged, serializable** models (V16).
+- Checkpoints after Intent Analysis, Diagram AST, Layout Model, Stroke AST, with resume-from-latest-valid (V16).
+- Caching (intent, AST, primitive resolution, layout, strokes) keyed by model version **and provider id** — a cache entry from Azure must not be served to a different provider (V09).
+- Cancellation stopping AI, agents, and rendering, releasing resources, preserving diagnostics (V16).
+- Observability: stage duration, token usage, cache hits, retry count, validation failures, render time/FPS, memory (V09, V16).
 
-**Work not covered by earlier phases, now required (Volume 09, 16):**
-- Pipeline Orchestrator running the full 9-stage sequence (Volume 09 §Pipeline Stages) with a validation gate after every stage (Volume 09 §Validation Gates) — this is the first point where Phase 2's validators, Phase 3's agents, Phase 4's engines, Phase 5's stroke engine, and Phase 6's renderer are all invoked in one call.
-- Session / Execution Context / Pipeline State / Drawing State / Playback State / Renderer State as distinct, non-merged runtime models (Volume 16 §Core Runtime Models), each serializable.
-- Checkpointing after Intent Analysis, Diagram AST, Layout Model, Stroke AST, with resume-from-latest-valid-checkpoint (Volume 16 §Checkpoints).
-- Typed event bus streaming stage/stroke/session lifecycle events end to end (Volume 09 §Streaming, Volume 16 §Event Bus) — this is what `apps/playground` subscribes to for live progress UI.
-- Cancellation that stops AI stages and rendering and releases resources without corrupting state (Volume 16 §Cancellation).
-- Caching (Intent Analysis, Diagram AST, Primitive Resolution, Layout, Stroke AST) keyed by model version (Volume 09 §Caching).
-- Observability: stage duration, token usage, cache hits, retry count, validation failures, rendering time/FPS, memory (Volume 09 §Observability, Volume 16 §Observability) exposed through public interfaces.
-
-**Acceptance criteria — this is the MVP finish line (Volume 18 §Acceptance Criteria, §Definition of Done):**
-- [ ] A single call — `"Explain a movable pulley."` into `ai-orchestrator` — produces a valid `DiagramAST`, computes layout, animates the drawing in `apps/playground` via `renderer-konva`, and completes without manual intervention.
-- [ ] The same request replayed from a checkpoint (e.g. resuming after Diagram AST) produces an equivalent final render.
-- [ ] Undo/redo works against the live orchestrated session, not just the isolated `stroke-runtime` unit tests from Phase 5.
-- [ ] Export (PNG at minimum) works from the orchestrated session.
-- [ ] Cancelling mid-pipeline stops AI calls and rendering promptly and leaves no dangling session state.
-- [ ] All package unit tests, root-level contract tests, and a new root-level system test for this full flow pass in CI (Volume 17 §Continuous Quality Gates).
-- [ ] Benchmarks (AI latency, layout time, stroke generation time, render time/FPS) are collected and within whatever thresholds the team sets, per Volume 17 §Performance Benchmarks.
+**MVP acceptance criteria** (Volume 18 §Acceptance Criteria, §Definition of Done):
+- [ ] "Explain a movable pulley" typed in `apps/web` produces a valid Diagram AST, computed layout, and live animated drawing, with both agent traces visible — no manual intervention.
+- [ ] Resuming from a checkpoint produces an equivalent final render.
+- [ ] Undo/redo works against the live orchestrated session.
+- [ ] Export (PNG minimum) works from the session.
+- [ ] Cancelling mid-pipeline stops AI and rendering promptly with no dangling state.
+- [ ] Switching `SKETCHMIND_LLM_PROVIDER` from `azure-openai` to the second adapter runs the same flow with **no code change** — the LLM-independence requirement, proven end to end.
+- [ ] All unit, contract, and a new full-flow system test pass in CI.
+- [ ] Benchmarks (AI latency, layout time, stroke time, render FPS) collected and within agreed thresholds (V17).
 
 ---
 
 ## Self-Review Notes
 
-- **Spec coverage:** every Volume 01–18 concept maps to at least one phase/task above; Volume 01 (product vision) and Volume 02 (architecture) are covered as the framing/global constraints rather than a standalone phase, since they define principles enforced throughout, not a deliverable of their own.
-- **Deferred-by-design gaps:** Phases 2–8 intentionally stop short of bite-sized code steps (see Scope Note) — this is not an oversight, it's because the docs themselves leave exact schema field types, prompt text, and provider choice to implementation, and pre-committing those now would likely be thrown away.
-- **Type consistency:** package names, model names (`IntentModel`, `VisualPlan`, `VIL`, `ShapeGraph`, `DiagramAST`, `ConstraintGraph`, `LayoutModel`, `StrokeAST`, `RuntimeEvent`), and stage order are used identically across all phases and match Volume 12 §Common Models exactly.
+- **Spec coverage:** every Volume 01–18 concept maps to a phase. Volumes 01–02 are framing, enforced through Global Constraints rather than a standalone phase.
+- **New requirements coverage:** LLM independence → Phase 3 + two lint-enforced Global Constraints + Phase 12 acceptance test; Azure OpenAI → Phase 3; web frontend → Phase 8; server agent → Phase 9; client agent → Phase 10.
+- **Deferred by design:** Phases 2–12 stop short of bite-sized code steps (see Scope Note) — the docs leave exact schema fields, prompt text, and tool signatures to implementation, and pre-committing them now would mean discarding work.
+- **Type consistency:** package names, model names, tool names, and stage order are used identically throughout and match Volume 12 §Common Models.
+- **Open items flagged for implementation time:** current Azure OpenAI API version and structured-output support for your specific AI Foundry deployment (Phase 3); SSE vs WebSocket final choice (Phase 8); exact critique heuristics for `critique_layout` (Phase 9).
