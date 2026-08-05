@@ -12,7 +12,7 @@ import {
   ToolSpecSchema,
   SCHEMA_VERSION,
   type RuntimeEvent,
-} from "../src/index";
+} from "../src/index.js";
 
 const ast = {
   id: "d1",

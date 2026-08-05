@@ -23,8 +23,8 @@
  * authority.
  */
 import { z } from "zod";
-import { LocusSchema, MetadataSchema } from "./primitives";
-import { SketchMindErrorSchema } from "./errors";
+import { LocusSchema, MetadataSchema } from "./primitives.js";
+import { SketchMindErrorSchema } from "./errors.js";
 
 export const ToolSpecSchema = z.object({
   name: z.string().min(1),

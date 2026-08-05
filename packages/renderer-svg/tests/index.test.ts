@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PACKAGE_NAME, PACKAGE_VERSION } from "../src/index";
+import { PACKAGE_NAME, PACKAGE_VERSION } from "../src/index.js";
 
 describe("renderer-svg package identity", () => {
   it("exposes its name and version", () => {

@@ -11,8 +11,8 @@
  * time instead of re-reasoned from scratch.
  */
 import { z } from "zod";
-import { SchemaVersionSchema, MetadataSchema } from "./primitives";
-import { RelationshipTypeSchema } from "./relationships";
+import { SchemaVersionSchema, MetadataSchema } from "./primitives.js";
+import { RelationshipTypeSchema } from "./relationships.js";
 
 /** What a node stands for (Volume 14 §Graph Components). */
 export const ShapeNodeKindSchema = z.enum([

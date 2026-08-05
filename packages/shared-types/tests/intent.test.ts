@@ -6,7 +6,7 @@ import {
   TeachingIntentSchema,
   RelationshipTypeSchema,
   SCHEMA_VERSION,
-} from "../src/index";
+} from "../src/index.js";
 
 const intent = {
   version: SCHEMA_VERSION,

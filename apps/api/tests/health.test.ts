@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildServer } from "../src/server";
+import { buildServer } from "../src/server.js";
 
 describe("api health endpoint", () => {
   it("returns ok", async () => {

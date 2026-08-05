@@ -5,7 +5,7 @@ import {
   ConstraintTypeSchema,
   ShapeNodeKindSchema,
   SCHEMA_VERSION,
-} from "../src/index";
+} from "../src/index.js";
 
 describe("ShapeGraph", () => {
   const graph = {

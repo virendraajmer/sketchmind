@@ -14,7 +14,7 @@
  * lets one Layout Model render identically to a 400px canvas and an A3 PDF.
  */
 import { z } from "zod";
-import { SchemaVersionSchema, MetadataSchema } from "./primitives";
+import { SchemaVersionSchema, MetadataSchema } from "./primitives.js";
 
 export const PointSchema = z.object({
   x: z.number().finite(),

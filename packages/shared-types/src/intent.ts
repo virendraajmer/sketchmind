@@ -17,8 +17,8 @@ import {
   ImportanceSchema,
   DetailLevelSchema,
   MetadataSchema,
-} from "./primitives";
-import { RelationshipSchema } from "./relationships";
+} from "./primitives.js";
+import { RelationshipSchema } from "./relationships.js";
 
 /** Instructional purpose (Volume 13 §Teaching Intent). */
 export const TeachingIntentSchema = z.enum([

@@ -26,7 +26,7 @@ import {
   IntentModelSchema,
   LayoutModelSchema,
   StrokeASTSchema,
-} from "../src/index";
+} from "../src/index.js";
 
 /**
  * Property names that mean "a position, size, or path in diagram space".

@@ -7,7 +7,7 @@ import {
   ok,
   fail,
   parseWith,
-} from "../src/index";
+} from "../src/index.js";
 
 describe("SketchMindError", () => {
   it("carries the Volume 12 contract fields", () => {

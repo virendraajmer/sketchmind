@@ -14,7 +14,7 @@
  * (one failure, then unwind) structurally cannot deliver.
  */
 import { z, type ZodError, type ZodType } from "zod";
-import { PipelineStageSchema, type PipelineStage } from "./primitives";
+import { PipelineStageSchema, type PipelineStage } from "./primitives.js";
 
 export const SketchMindErrorSchema = z.object({
   /** Stable machine-readable identifier, e.g. `AST_DUPLICATE_ID`. */

@@ -1,8 +1,13 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
+    // NodeNext, not Bundler. Under Bundler, tsc emits relative imports without
+    // a `.js` extension, which Node's ESM loader cannot resolve -- `dist/` was
+    // literally unloadable outside a bundler. Vitest hid this because it
+    // resolves through its own bundler; `node dist/index.js` did not.
+    // `apps/web` overrides this back to Bundler, which is what Next.js needs.
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "strict": true,
     "declaration": true,
     "declarationMap": true,

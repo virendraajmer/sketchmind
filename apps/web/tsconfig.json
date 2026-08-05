@@ -1,6 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    // Next.js bundles; it requires bundler resolution and rejects NodeNext.
+    // The base sets NodeNext so that server packages emit Node-loadable ESM.
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
     "jsx": "preserve",
     "noEmit": true,
     "composite": false,

@@ -18,6 +18,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json"
   },
   "dependencies": {
-    "@sketchmind/shared-types": "workspace:*"
+    "@azure/identity": "^4.13.1",
+    "@sketchmind/llm-provider": "workspace:*",
+    "@sketchmind/shared-types": "workspace:*",
+    "openai": "^7.4.0",
+    "zod": "^4.4.3"
   }
 }

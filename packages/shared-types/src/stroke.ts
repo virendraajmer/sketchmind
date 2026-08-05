@@ -11,8 +11,8 @@
  * a diagram appearing and a diagram being explained.
  */
 import { z } from "zod";
-import { SchemaVersionSchema, MetadataSchema } from "./primitives";
-import { PointSchema, BoundingBoxSchema } from "./layout";
+import { SchemaVersionSchema, MetadataSchema } from "./primitives.js";
+import { PointSchema, BoundingBoxSchema } from "./layout.js";
 
 /** The 12 semantic stroke types of Volume 06. Plugins may register more. */
 export const StrokeTypeSchema = z.enum([

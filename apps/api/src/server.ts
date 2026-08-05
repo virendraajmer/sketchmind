@@ -1,5 +1,5 @@
 import Fastify, { type FastifyInstance } from "fastify";
-import { registerHealth } from "./routes/health";
+import { registerHealth } from "./routes/health.js";
 
 /**
  * Builds the SketchMind API server.

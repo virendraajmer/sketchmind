@@ -22,7 +22,7 @@ import {
   type DiagramAST,
   type ValidationResult,
 } from "@sketchmind/shared-types";
-import { semanticErrors, collectObjects, findObject, PACKAGE } from "./internal/validate";
+import { semanticErrors, collectObjects, findObject, PACKAGE } from "./internal/validate.js";
 
 export const PACKAGE_NAME = PACKAGE;
 export const PACKAGE_VERSION = "0.0.1";

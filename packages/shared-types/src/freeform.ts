@@ -26,7 +26,7 @@
  * registered primitive. That is the intended path from expedient to permanent.
  */
 import { z } from "zod";
-import { SchemaVersionSchema, MetadataSchema } from "./primitives";
+import { SchemaVersionSchema, MetadataSchema } from "./primitives.js";
 
 /** Geometric building blocks. Deliberately fewer than the stroke types -- these
  * are shape parts, not drawing acts, so `erase` and `hatch` have no place. */

@@ -11,10 +11,10 @@
  * `@sketchmind/diagram-ast` walks that tree.
  */
 import { z } from "zod";
-import { SchemaVersionSchema, MetadataSchema } from "./primitives";
-import { RelationshipSchema } from "./relationships";
-import { AnchorSchema } from "./shape-graph";
-import { DiagramCategorySchema } from "./intent";
+import { SchemaVersionSchema, MetadataSchema } from "./primitives.js";
+import { RelationshipSchema } from "./relationships.js";
+import { AnchorSchema } from "./shape-graph.js";
+import { DiagramCategorySchema } from "./intent.js";
 
 export const LabelSchema = z.object({
   id: z.string().min(1),

@@ -8,7 +8,7 @@ import {
   parseDiagramAST,
   collectObjects,
   findObject,
-} from "../src/index";
+} from "../src/index.js";
 
 const input = {
   id: "d1",

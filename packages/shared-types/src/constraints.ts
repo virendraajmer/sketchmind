@@ -14,7 +14,7 @@
  * would lose whichever half had no counterpart.
  */
 import { z } from "zod";
-import { SchemaVersionSchema, MetadataSchema } from "./primitives";
+import { SchemaVersionSchema, MetadataSchema } from "./primitives.js";
 
 /** The 15 constraint types of Volume 14. Plugins may register more. */
 export const ConstraintTypeSchema = z.enum([

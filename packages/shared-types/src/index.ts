@@ -16,15 +16,15 @@
 export const PACKAGE_NAME = "@sketchmind/shared-types";
 export const PACKAGE_VERSION = "0.0.1";
 
-export * from "./primitives";
-export * from "./errors";
-export * from "./relationships";
-export * from "./intent";
-export * from "./constraints";
-export * from "./shape-graph";
-export * from "./diagram";
-export * from "./layout";
-export * from "./stroke";
-export * from "./freeform";
-export * from "./runtime";
-export * from "./agent";
+export * from "./primitives.js";
+export * from "./errors.js";
+export * from "./relationships.js";
+export * from "./intent.js";
+export * from "./constraints.js";
+export * from "./shape-graph.js";
+export * from "./diagram.js";
+export * from "./layout.js";
+export * from "./stroke.js";
+export * from "./freeform.js";
+export * from "./runtime.js";
+export * from "./agent.js";

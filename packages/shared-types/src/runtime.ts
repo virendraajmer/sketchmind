@@ -8,8 +8,8 @@
  * fails silently at runtime in the browser where nobody is watching.
  */
 import { z } from "zod";
-import { PipelineStageSchema, LocusSchema, MetadataSchema } from "./primitives";
-import { SketchMindErrorSchema } from "./errors";
+import { PipelineStageSchema, LocusSchema, MetadataSchema } from "./primitives.js";
+import { SketchMindErrorSchema } from "./errors.js";
 
 export const SessionStatusSchema = z.enum([
   "pending",
