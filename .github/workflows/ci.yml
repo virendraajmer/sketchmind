@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Package dependency direction and cycles. Fast, so it runs first --
+      # an architectural violation should fail before spending time on builds.
+      - name: Check package layering
+        run: pnpm run check:layering
+
+      - run: pnpm run lint
+      - run: pnpm run typecheck
+      - run: pnpm run build
+      - run: pnpm run test
+
+      # LLM independence is a hard requirement, so it is verified rather than
+      # trusted: no provider SDK may be imported outside packages/llm-provider-*.
+      - name: Verify no provider SDK leaks outside adapters
+        run: |
+          if grep -rnE "from \"(openai|@azure/|@anthropic-ai/|@google/)" \
+               --include="*.ts" --include="*.tsx" \
+               packages apps \
+             | grep -v "^packages/llm-provider-"; then
+            echo "::error::Provider SDK imported outside packages/llm-provider-*"
+            exit 1
+          fi
+          echo "No provider SDK leaks."
