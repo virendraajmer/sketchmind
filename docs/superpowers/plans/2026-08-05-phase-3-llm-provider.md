@@ -171,27 +171,33 @@ TDD throughout: test first, watch it fail, implement, watch it pass.
 | 10 | Live integration test, skipped without env; capability probe | `llm-provider-azure-openai/tests/live.test.ts` |
 | 11 | READMEs, master-plan update (AD-9), full gate | — |
 
+All eleven tasks complete. See Outcome below.
+
 ---
 
 ## Acceptance criteria
 
-- [ ] Live integration test (skipped without Azure env) returns an object matching a Zod schema
-      drawn from `shared-types`, not a toy schema.
-- [ ] The same contract suite passes against the fake provider with **zero test-code changes** —
-      guaranteed because there is one copy of the suite, parameterized by a factory.
-- [ ] `SKETCHMIND_LLM_PROVIDER=anthropic` switches adapters with no code change, proven by a test
-      that flips the env var and asserts on `provider.id`.
-- [ ] A provider with `structuredOutput: false` still returns schema-valid objects via repair, and
-      the trace shows the repair round trip happened.
-- [ ] Every schema `shared-types` exports normalizes to Azure-strict-valid JSON Schema.
-- [ ] 429 retries honoring `Retry-After`; content filter fails fast; 404 deployment-not-found is
+- [x] Live integration test (skipped without Azure env) returns an object matching a Zod schema
+      drawn from `shared-types`, not a toy schema. — `IntentModelSchema`, `live.test.ts`.
+- [x] The same contract suite passes against the fake provider with **zero test-code changes** —
+      guaranteed because there is one copy of the suite, parameterized by a factory. Run three times:
+      fake/native, fake/repair, and against both real adapters over stubbed transports.
+- [x] `SKETCHMIND_LLM_PROVIDER=anthropic` switches adapters with no code change, proven by a test
+      that flips the env var and asserts on `provider.id`. — `registry-switch.test.ts`.
+- [x] A provider with `structuredOutput: false` still returns schema-valid objects via repair, and
+      the trace shows the repair round trip happened. — asserted for both adapters
+      (`mechanism: "prompt-repair"`, `repairAttempts > 0`).
+- [x] Every schema `shared-types` exports normalizes to Azure-strict-valid JSON Schema. — all 40
+      object-rooted schemas; one documented exclusion (`ToolSpecSchema`, never model output) with a
+      test proving it fails for exactly the open-ended-map reason.
+- [x] 429 retries honoring `Retry-After`; content filter fails fast; 404 deployment-not-found is
       fatal — each asserted with a stubbed transport, no network.
-- [ ] No `openai` / `@azure/*` / `@anthropic-ai/*` import outside `packages/llm-provider-*`
+- [x] No `openai` / `@azure/*` / `@anthropic-ai/*` import outside `packages/llm-provider-*`
       (lint-enforced, plus the grep the earlier phases used).
-- [ ] With `vision: false`, `completeWithImages` fails before constructing a request — asserted by
-      a transport spy, not by reading the code.
-- [ ] No prompt text appears in any log call — asserted with a canary string.
-- [ ] Full gate green: layering → lint → typecheck → build → test.
+- [x] With `vision: false`, `completeWithImages` fails before constructing a request — asserted by
+      a transport spy, not by reading the code. Both adapters and the fake.
+- [x] No prompt text appears in any log call — asserted with a canary string. Both adapters.
+- [x] Full gate green: layering → lint → typecheck → build → test.
 
 ---
 
@@ -201,3 +207,42 @@ TDD throughout: test first, watch it fail, implement, watch it pass.
 answers it empirically against the real deployment, and the result is what populates config. If the
 probe shows strict structured output is unsupported, the repair fallback from Task 4 carries it with
 no change above this layer — which is the point of building the fallback first.
+
+**Still open after this phase:** the probe (`pnpm probe:azure`) has not been run against the live
+`gpt-5.6-luna` deployment in this environment — there is no Azure credential available here. Run it
+once real credentials are configured, and set `AZURE_OPENAI_STRUCTURED_OUTPUT` /
+`AZURE_OPENAI_TOOL_CALLING` from its output. Until then the adapter assumes both are supported
+(the pre-probe default for a current-generation deployment), which the live test would catch if wrong.
+
+---
+
+## Outcome
+
+All eleven tasks landed on `phase-3`, TDD throughout. Final state:
+
+- **`llm-provider`** — 135 tests passing across 6 files. The provider-independent interface,
+  strict-mode JSON Schema normalizer (tested against all 40 object-rooted `shared-types` schemas),
+  retry/backoff, error classification, `FakeProvider`, `ProviderRegistry`, and the exported contract
+  suite (`@sketchmind/llm-provider/testing`).
+- **`llm-provider-azure-openai`** — 56 tests passing, 3 skipped (the live suite; no Azure
+  credentials in this environment). Targets the v1 API surface per AD-9: no `api-version`, stock
+  `OpenAI` client, Responses API, both API-key and Entra auth. Includes `scripts/probe.mjs`
+  (`pnpm probe:azure`) for measuring real capabilities against a deployment.
+- **`llm-provider-anthropic`** — 49 tests passing. Structured output via forced tool call
+  (`mechanism: "forced-tool"`), same contract suite, zero test-code changes — the proof that
+  `types.ts` isn't secretly Azure-shaped.
+- **Repo-wide fix, found while wiring this phase:** `tsconfig.base.json` moved from
+  `moduleResolution: "Bundler"` to `NodeNext`/`NodeNext` (with `apps/web` overriding back to
+  `Bundler`, which Next.js needs), because `Bundler` emitted extensionless relative imports that
+  Node's ESM loader could not resolve — `dist/` was unloadable by `node` outside a bundler. A
+  one-time codemod (`scripts/add-import-extensions.mjs`) added the missing `.js` extensions across
+  49 files in `packages/*` and `apps/api`.
+- **Env contract:** `AZURE_OPENAI_API_VERSION` removed; `AZURE_OPENAI_BASE_URL` +
+  `AZURE_OPENAI_DEPLOYMENT` + one credential added; capability-override variables
+  (`AZURE_OPENAI_STRUCTURED_OUTPUT`, etc.) and the Anthropic block added.
+- **Not committed.** Per standing instruction, the user reviews and checks in.
+
+Not done in this phase, intentionally out of scope: wiring either adapter into a composition root
+(`ai-orchestrator` is Phase 11's package and is still an empty skeleton), and an Anthropic live test
+(no Anthropic credential available here either — add one alongside the Azure live test when a key
+is available).

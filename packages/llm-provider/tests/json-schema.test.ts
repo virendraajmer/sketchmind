@@ -71,7 +71,11 @@ function isZodType(value: unknown): value is z.ZodType {
 
 /** Every exported schema whose JSON Schema root is an object. */
 function objectRootedSchemas(): Array<[string, z.ZodType]> {
-  return Object.entries(SharedTypes)
+  // `SharedTypes` is a namespace import: TypeScript infers `Object.entries` over
+  // it as a union of per-property tuple literals rather than `[string, T][]`,
+  // which the `isZodType` predicate below can't narrow against. Widening to
+  // `Record<string, unknown>` first is what actually erases that literal typing.
+  return Object.entries(SharedTypes as Record<string, unknown>)
     .filter((entry): entry is [string, z.ZodType] => isZodType(entry[1]))
     .filter(([, schema]) => {
       try {

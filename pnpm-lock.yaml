@@ -166,6 +166,9 @@ importers:
       '@sketchmind/shared-types':
         specifier: workspace:*
         version: link:../shared-types
+      vitest:
+        specifier: ^2.1.9
+        version: 2.1.9(@types/node@26.1.2)(jsdom@25.0.1)
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -202,6 +205,10 @@ importers:
       zod:
         specifier: ^4.4.3
         version: 4.4.3
+    devDependencies:
+      '@sketchmind/llm-provider-anthropic':
+        specifier: workspace:*
+        version: link:../llm-provider-anthropic
 
   packages/plugin-sdk:
     dependencies:

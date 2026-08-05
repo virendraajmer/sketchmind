@@ -12,7 +12,8 @@
     "check:layering": "node scripts/check-layering.mjs",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
-    "dev": "turbo run dev --parallel"
+    "dev": "turbo run dev --parallel",
+    "probe:azure": "pnpm --filter @sketchmind/llm-provider-azure-openai run probe"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

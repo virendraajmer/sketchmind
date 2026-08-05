@@ -357,7 +357,7 @@ describe("image input (AD-3 / D-10)", () => {
       images: [{ mimeType: "image/png", base64: "iVBORw0KGgo=" }],
     });
 
-    const input = stub.calls[0]!.input as Array<{ content: Array<Record<string, unknown>> }>;
+    const input = stub.calls[0]!.input as unknown as Array<{ content: Array<Record<string, unknown>> }>;
     expect(input[0]!.content).toContainEqual({
       type: "input_image",
       image_url: "data:image/png;base64,iVBORw0KGgo=",

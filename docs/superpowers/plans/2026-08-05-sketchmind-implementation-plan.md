@@ -102,6 +102,13 @@ This is a deliberate ordering, not a cut: build the free tier first, measure wha
 **Per your direction:** no permission prompts, no capability allowlist, no escalation gates. The client agent annotates, erases, redraws, re-lays-out, invents components, and extends diagrams on its own initiative.
 **Retained:** step budget, token budget, wall-clock timeout, cancellation token, and full step tracing. These bound *cost and liveness*, never *decisions*. An agent that cannot be cancelled or observed isn't autonomous — it's unowned, and it will eventually cost you money at 3am.
 
+### AD-9 — Azure OpenAI: target the v1 API surface, no `api-version`
+
+**Docs said:** verify the API version at implementation time; assumed `AzureOpenAI` client + `api-version` query param, chat-completions shaped.
+**What the deployment settled it:** the Azure AI Foundry playground sample for the live deployment (`gpt-5.6-luna`) uses the stock `OpenAI` client with a `baseURL` ending `/openai/v1`, no `api-version` anywhere, and calls the Responses API (`client.responses.create` / `.stream`) rather than Chat Completions. This is Azure's v1 API surface, GA since August 2025.
+**Change:** `llm-provider-azure-openai` never models `api-version` — not as a required field, not as an optional one left blank. `AZURE_OPENAI_API_VERSION` does not exist in `.env.example`; the config surface is `AZURE_OPENAI_BASE_URL` (normalized up to `/openai/v1`, accepting the bare resource endpoint the portal shows) + `AZURE_OPENAI_DEPLOYMENT` + one credential (API key or Entra, never both). Auth uses `getBearerTokenProvider(new DefaultAzureCredential(), "https://ai.azure.com/.default")` passed as `apiKey` — the v1 client refreshes the token itself, so `AzureOpenAI` is no longer needed for the Entra path either.
+**Why:** a variable that must be left empty is a variable someone eventually fills in wrongly. Building against the sample the deployment actually emits, rather than the docs' assumption, is also why Phase 3 added `llm-provider-anthropic` in the same phase instead of deferring it — a second provider is what proves the interface in `types.ts` isn't secretly Azure-shaped (see `docs/superpowers/plans/2026-08-05-phase-3-llm-provider.md`, D-1–D-10).
+
 ---
 
 ## Global Constraints
@@ -854,10 +861,26 @@ git commit -m "chore: add directory READMEs and CI quality gate"
 
 ---
 
-## Phase 3 — LLM Provider Abstraction + Azure OpenAI
+## Phase 3 — LLM Provider Abstraction + Azure OpenAI ✅ COMPLETE
 
 **Deliverable:** a live Azure call returning schema-valid JSON through an interface that knows nothing about Azure.
 **Packages:** `llm-provider`, `llm-provider-azure-openai`, `llm-provider-anthropic`.
+
+**Deviations from this section, both recorded as AD-9 and detailed in
+`docs/superpowers/plans/2026-08-05-phase-3-llm-provider.md`:**
+- No `api-version` anywhere, stock `OpenAI` client (not `AzureOpenAI`), Responses API instead of
+  Chat Completions — the live deployment's own playground sample settled this; see AD-9 above.
+- `llm-provider-anthropic` was built in this phase, not deferred, specifically to prove
+  `LLMProvider` isn't Azure-shaped: `completeStructured` reaches a validated value by forced tool
+  call rather than native `response_format`, behind an identical signature, verified by running the
+  same exported contract suite against both adapters with zero test-code changes.
+- A latent Phase 1 defect was found and fixed while wiring this phase's `node` scripts:
+  `tsconfig.base.json` used `moduleResolution: "Bundler"`, which emits relative imports with no
+  `.js` extension — invisible under Vitest (it resolves through its own bundler) but fatal to
+  `node dist/index.js` outside one. Switched the base config to `NodeNext`/`NodeNext` (with
+  `apps/web` overriding back to `Bundler`, which Next.js requires), and ran a one-time codemod
+  (`scripts/add-import-extensions.mjs`) adding `.js` to every relative import/export across
+  `packages/*` and `apps/api`.
 
 ```ts
 export interface LLMCapabilities {
@@ -885,12 +908,25 @@ export interface LLMProvider {
 **Azure specifics:** `openai` SDK's `AzureOpenAI` client (the standalone `@azure/openai` package is legacy — verify current guidance at implementation time). Config strictly from `.env`. Both API-key and Entra ID / `DefaultAzureCredential` auth. Structured-output capability set from config/probe, not hardcoded — AI Foundry support varies by model and API version. Map Azure errors to `SketchMindError`: 429 + `Retry-After` retryable, content-filter **not** retryable, deployment-not-found fatal. Never log user content at info level.
 
 **Acceptance:**
-- [ ] Live integration test (skipped without Azure env) returns an object matching a Zod schema.
-- [ ] The same test passes against an in-memory fake provider with **zero test-code changes**.
-- [ ] `SKETCHMIND_LLM_PROVIDER=anthropic` switches adapters with no code change.
-- [ ] No `openai`/`azure` source hits outside the adapter (lint-enforced).
-- [ ] A provider with `structuredOutput: false` still returns schema-valid objects via repair fallback.
-- [ ] 429 retries with backoff honoring `Retry-After`; content-filter fails fast.
+- [x] Live integration test (skipped without Azure env) returns an object matching a Zod schema
+      (`IntentModelSchema`, not a toy) — `llm-provider-azure-openai/tests/live.test.ts`.
+- [x] The same test passes against an in-memory fake provider with **zero test-code changes** — one
+      exported `describeProviderContract`, run against `FakeProvider` (native and repair paths) and
+      against both real adapters over stubbed transports.
+- [x] `SKETCHMIND_LLM_PROVIDER=anthropic` switches adapters with no code change —
+      `llm-provider-azure-openai/tests/registry-switch.test.ts`.
+- [x] No `openai`/`@azure/*`/`@anthropic-ai/*` source hits outside `packages/llm-provider-*`
+      (lint-enforced + grep).
+- [x] A provider with `structuredOutput: false` still returns schema-valid objects via repair
+      fallback — asserted for both adapters.
+- [x] 429 retries with backoff honoring `Retry-After`; content-filter fails fast; 404
+      deployment-not-found is fatal — all asserted with stubbed transports, no network.
+- [x] `completeWithImages` refuses before reading `req.images` while `vision: false` — asserted with
+      a getter that records access, for both adapters and the fake (D-10).
+- [x] No prompt/output text in any log call — asserted with a canary string, for both adapters (D-7).
+
+**Test counts:** `llm-provider` 135 passing · `llm-provider-azure-openai` 56 passing / 3 skipped
+(live, no Azure env in this environment) · `llm-provider-anthropic` 49 passing.
 
 ---
 
