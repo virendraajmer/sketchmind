@@ -46,14 +46,42 @@ export default tseslint.config(
     },
     rules: {
       "import/no-cycle": ["error", { maxDepth: 10 }],
+      // Honour the `_` prefix convention. Destructuring a field purely to omit
+      // it (`const { version: _drop, ...rest } = x`) is deliberate, and the
+      // prefix is how the author says so.
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+          ignoreRestSiblings: true
+        }
+      ],
       "no-restricted-imports": [
         "error",
         {
           patterns: [
             {
-              group: ["**/internal/*", "**/internal"],
+              // Cross-package reaching only. A package importing its OWN
+              // internals via "./internal/..." is the structure Volume 12
+              // prescribes, so it must stay legal -- the original pattern
+              // ("**/internal/*") banned that too and made the prescribed
+              // layout unlintable.
+              //
+              // Two escape routes exist and both are covered: the package name
+              // ("@sketchmind/foo/internal/x", which the exports map already
+              // refuses) and a relative climb out of the package
+              // ("../../foo/src/internal/x").
+              group: [
+                "@sketchmind/*/internal",
+                "@sketchmind/*/internal/**",
+                "@sketchmind/*/src/internal/**",
+                "../../*/src/internal/**",
+                "../../../**/internal/**"
+              ],
               message:
-                "Import a package's public API (src/index.ts) only. Internals are private (Volume 12)."
+                "Import another package's public API (its src/index.ts) only. Internals are private to their own package (Volume 12)."
             },
             {
               group: ["openai", "@azure/*", "@anthropic-ai/*", "@google/*", "@google-cloud/*"],

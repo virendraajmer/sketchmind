@@ -55,8 +55,23 @@ The requirement docs describe a **fixed linear pipeline with halting validation 
 ### AD-3 — The agent sees what it drew (vision self-correction)
 
 **Docs say:** nothing. No volume mentions the agent observing rendered output.
-**Change:** after rendering, capture the canvas and feed the image back to the agent (Azure OpenAI gpt-4o family is multimodal). The agent critiques its own drawing and fixes it — rope not meeting the pulley, label overlapping a component, diagram unbalanced.
-**Why:** this is the highest-value addition to drawing *quality* in the whole plan. Constraint solvers catch overlap; they cannot catch "this doesn't look like a pulley system." Only looking catches that. A system that can draw anything but can't tell whether it worked isn't autonomous — it's just fast.
+**Change:** the agent critiques its own drawing and fixes it — rope not meeting the pulley, label overlapping a component, diagram unbalanced.
+**Why:** constraint solvers catch overlap; they cannot catch "this doesn't look like a pulley system." A system that can draw anything but can't tell whether it worked isn't autonomous — it's just fast.
+
+**Revised 2026-08-05 — two tiers, image tier off by default.**
+
+Self-correction splits into two independent tiers, and only the first ships enabled:
+
+| Tier | Input | Cost | Default |
+|---|---|---|---|
+| **Geometric critique** | `LayoutModel` + `StrokeAST` as JSON | Zero tokens, ~ms, deterministic | **On** |
+| **Visual critique** | Rendered PNG | Tokens + latency per round | **Off** |
+
+The geometric tier is pure software reading the models the pipeline already produced: label/object overlap, out-of-bounds elements, connector crossings, endpoints that don't meet their anchors, degenerate sizes, unbalanced whitespace. It emits the same structured `fix proposals` the visual tier would, so the agent's repair loop is identical either way. It is deterministic, free, and catches most of what actually goes wrong.
+
+The visual tier catches the residue — "this doesn't read as a pulley system" — which no amount of geometry inspection can see. It stays behind `AZURE_OPENAI_VISION_DEPLOYMENT`, blank by default, and is switched on without code changes when the token and latency cost is worth paying.
+
+This is a deliberate ordering, not a cut: build the free tier first, measure what still slips through, then decide whether the paid tier earns its cost on real output.
 
 ### AD-4 — One session agent with two tool surfaces, not two agents
 
@@ -804,7 +819,12 @@ git commit -m "chore: add directory READMEs and CI quality gate"
 
 ---
 
-## Phase 2 — Core Models
+## Phase 2 — Core Models ✅ COMPLETE
+
+> Detailed plan and outcome: `2026-08-05-phase-2-core-models.md`.
+> 104 tests; full gate green. Two deviations landed: `ToolDefinition` split into
+> `ToolSpec` (here) + handler (Phase 4 `agent-core`), to preserve layering; and VIL and
+> the Diagram AST share one 14-type relationship vocabulary rather than two.
 
 **Deliverable:** models compile and validate.
 **Packages:** `shared-types`, `diagram-ast`, `utilities`.
@@ -980,17 +1000,24 @@ Each stage keeps its V12/V15 contract but is exposed as a tool: `analyze_intent`
 
 ## Phase 10 — Vision Self-Correction
 
-**Deliverable:** the agent looks at its own drawing and fixes it (AD-3).
+**Deliverable:** the agent inspects its own drawing and fixes it (AD-3).
 **Packages:** `agent-vision`.
 
-After render, `captureImage` → multimodal critique against the original request → structured fix proposals (`move_object`, `resize_object`, `reposition_label`, `add_missing_component`, `redraw_object`) → agent applies and re-renders. Bounded by a correction-round budget so it converges instead of oscillating.
+Two critique sources feeding one repair loop. Both emit the same structured fix proposals — `move_object`, `resize_object`, `reposition_label`, `add_missing_component`, `redraw_object` — so the agent's repair path does not care which produced them. Bounded by a correction-round budget so it converges instead of oscillating.
+
+**10a — Geometric critique (default on, zero token cost).**
+Deterministic inspection of `LayoutModel` + `StrokeAST`: object/label overlap, out-of-bounds elements, connector crossings, connector endpoints not meeting their declared anchors, degenerate or zero sizes, severe whitespace imbalance. Pure software over models the pipeline already built — no model call, no image, no added latency.
+
+**10b — Visual critique (default off).**
+`captureImage` → multimodal critique against the original request. Gated on `AZURE_OPENAI_VISION_DEPLOYMENT` being set and the provider reporting `vision: true`. Blank means the tier never runs and nothing fails.
 
 **Acceptance:**
-- [ ] A seeded diagram with an obviously misplaced component (rope not meeting the pulley) is detected and corrected — verified by comparing before/after `LayoutModel`.
+- [ ] A seeded diagram with an obviously misplaced component (rope not meeting the pulley) is detected and corrected by **10a alone** — verified by comparing before/after `LayoutModel`.
 - [ ] A correct diagram passes critique **without** spurious changes (no oscillation on good output).
 - [ ] Correction rounds are budget-capped; the loop always terminates.
-- [ ] Critique runs against the vision deployment; a provider with `vision: false` skips the phase cleanly rather than failing.
-- [ ] Before/after images and the critique text appear in the trace panel.
+- [ ] With `AZURE_OPENAI_VISION_DEPLOYMENT` blank, the full pipeline runs end to end with 10a only — no image is ever encoded, sent, or logged. Asserted by a test, not by configuration alone.
+- [ ] Setting the variable enables 10b with **no code change**.
+- [ ] Critique findings appear in the trace panel, tagged with which tier produced them.
 
 ---
 
