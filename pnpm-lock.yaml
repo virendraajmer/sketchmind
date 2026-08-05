@@ -36,7 +36,169 @@ importers:
         specifier: ^2.1.0
         version: 2.1.9
 
+  packages/agent-core:
+    dependencies:
+      '@sketchmind/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+
+  packages/agent-memory:
+    dependencies:
+      '@sketchmind/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+
+  packages/agent-tools-canvas:
+    dependencies:
+      '@sketchmind/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+
+  packages/agent-tools-geometry:
+    dependencies:
+      '@sketchmind/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+
+  packages/agent-tools-reasoning:
+    dependencies:
+      '@sketchmind/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+
+  packages/agent-vision:
+    dependencies:
+      '@sketchmind/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+
+  packages/ai-orchestrator:
+    dependencies:
+      '@sketchmind/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+
+  packages/constraint-engine:
+    dependencies:
+      '@sketchmind/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+
+  packages/diagram-ast:
+    dependencies:
+      '@sketchmind/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+
+  packages/diagram-reasoner:
+    dependencies:
+      '@sketchmind/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+
+  packages/export-engine:
+    dependencies:
+      '@sketchmind/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+
+  packages/intent-analyzer:
+    dependencies:
+      '@sketchmind/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+
+  packages/layout-engine:
+    dependencies:
+      '@sketchmind/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+
+  packages/llm-provider:
+    dependencies:
+      '@sketchmind/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+
+  packages/llm-provider-anthropic:
+    dependencies:
+      '@sketchmind/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+
+  packages/llm-provider-azure-openai:
+    dependencies:
+      '@sketchmind/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+
+  packages/plugin-sdk:
+    dependencies:
+      '@sketchmind/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+
+  packages/primitive-sdk:
+    dependencies:
+      '@sketchmind/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+
+  packages/renderer-core:
+    dependencies:
+      '@sketchmind/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+
+  packages/renderer-konva:
+    dependencies:
+      '@sketchmind/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+
+  packages/renderer-svg:
+    dependencies:
+      '@sketchmind/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+
+  packages/session-protocol:
+    dependencies:
+      '@sketchmind/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+
+  packages/shape-intelligence:
+    dependencies:
+      '@sketchmind/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+
   packages/shared-types: {}
+
+  packages/stroke-planner:
+    dependencies:
+      '@sketchmind/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+
+  packages/stroke-runtime:
+    dependencies:
+      '@sketchmind/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+
+  packages/utilities:
+    dependencies:
+      '@sketchmind/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+
+  packages/visual-planner:
+    dependencies:
+      '@sketchmind/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
 
 packages:
 

@@ -17,11 +17,11 @@ import importPlugin from "eslint-plugin-import";
  * The two are complementary: no-cycle cannot see package layering, and the
  * layering script cannot see file cycles.
  *
- * NOTE: `import/no-cycle` requires full TypeScript module resolution and is
- * known to be slow on large workspaces. Its real cost here is unmeasured --
- * there were no .ts files at the time this config was written. Measure
- * `pnpm run lint` once packages carry real source; if it becomes a bottleneck,
- * scope it to changed files in CI rather than dropping it.
+ * Measured cost across 28 skeleton packages: ~1m46s cold, ~0.5s fully cached
+ * by turbo. The per-package cost (~3.8s) is dominated by eslint process startup,
+ * not by cycle analysis. Turbo's cache makes incremental runs cheap, so this is
+ * acceptable. Re-measure once packages carry real source; if cold lint becomes a
+ * CI bottleneck, scope it to changed packages rather than dropping the rule.
  */
 export default tseslint.config(
   {

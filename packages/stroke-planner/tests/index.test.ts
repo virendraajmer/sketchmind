@@ -1,0 +1,9 @@
+import { describe, it, expect } from "vitest";
+import { PACKAGE_NAME, PACKAGE_VERSION } from "../src/index";
+
+describe("stroke-planner package identity", () => {
+  it("exposes its name and version", () => {
+    expect(PACKAGE_NAME).toBe("@sketchmind/stroke-planner");
+    expect(PACKAGE_VERSION).toBe("0.0.1");
+  });
+});
