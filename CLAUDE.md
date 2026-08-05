@@ -100,8 +100,12 @@ overrides back to `Bundler` because Next.js requires it.
 
 ## Project status
 
-Phases 1–5 complete (repo foundation, core models, LLM provider abstraction, agent-core +
-agent-memory, reasoning tools). Phase 6 (constraint-engine + layout-engine — deterministic, no AI)
-is next. See the implementation plan doc for phase-by-phase scope and acceptance criteria before
-starting new package work, plus `docs/superpowers/plans/2026-08-05-phase-5-reasoning-tools.md` for
-the decisions Phase 5 settled (prompt templates as data, the geometry guard, `ReasoningWorkspace`).
+Phases 1–6 complete (repo foundation, core models, LLM provider abstraction, agent-core +
+agent-memory, reasoning tools, constraint-engine + layout-engine). Phase 7 (stroke-planner +
+stroke-runtime) is next. See the implementation plan doc for phase-by-phase scope and acceptance
+criteria before starting new package work, plus
+`docs/superpowers/plans/2026-08-05-phase-5-reasoning-tools.md` for the decisions Phase 5 settled
+(prompt templates as data, the geometry guard, `ReasoningWorkspace`) and
+`docs/superpowers/plans/2026-08-05-phase-6-layout-engine.md` for Phase 6's (the `intersects` overlap
+exemption, the two-pass box-model solver, why collision resolution needs no ancestor exemption,
+perimeter-only anchor resolution).

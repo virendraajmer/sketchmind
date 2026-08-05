@@ -211,6 +211,9 @@ importers:
 
   packages/layout-engine:
     dependencies:
+      '@sketchmind/constraint-engine':
+        specifier: workspace:*
+        version: link:../constraint-engine
       '@sketchmind/shared-types':
         specifier: workspace:*
         version: link:../shared-types
@@ -359,9 +362,15 @@ importers:
       '@sketchmind/agent-tools-reasoning':
         specifier: workspace:*
         version: link:../packages/agent-tools-reasoning
+      '@sketchmind/constraint-engine':
+        specifier: workspace:*
+        version: link:../packages/constraint-engine
       '@sketchmind/diagram-ast':
         specifier: workspace:*
         version: link:../packages/diagram-ast
+      '@sketchmind/layout-engine':
+        specifier: workspace:*
+        version: link:../packages/layout-engine
       '@sketchmind/llm-provider':
         specifier: workspace:*
         version: link:../packages/llm-provider
