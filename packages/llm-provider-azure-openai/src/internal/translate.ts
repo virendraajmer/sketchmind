@@ -18,11 +18,50 @@ import {
 import { APIConnectionTimeoutError, APIConnectionError, APIError, APIUserAbortError } from "openai";
 import type { Responses } from "openai/resources/responses/responses";
 
+/**
+ * Flatten the message history into Responses input items.
+ *
+ * Azure does not nest tool calls inside an assistant message the way Anthropic
+ * does -- a call and its output are sibling items in one flat list, linked by
+ * `call_id`. So one `AssistantMessage` can expand to several items, and the
+ * expansion has to preserve order or the model reads the conversation wrong.
+ */
 export function toInput(req: CompletionRequest): Responses.ResponseInput {
-  return req.messages.map((message) => ({
-    role: message.role,
-    content: message.content,
-  }));
+  const input: Responses.ResponseInput = [];
+
+  for (const message of req.messages) {
+    if (message.role === "tool") {
+      input.push({
+        type: "function_call_output",
+        call_id: message.toolCallId,
+        // No error flag exists on this item, so a failed result reads as its
+        // text. That is what the model sees either way (AD-2).
+        output: message.content,
+      });
+      continue;
+    }
+
+    // An assistant turn that was nothing but tool calls has no text to send, and
+    // an empty content string is not something Azure wants to be told about.
+    if (message.content.length > 0 || message.role === "user") {
+      input.push({ role: message.role, content: message.content });
+    }
+
+    if (message.role === "assistant") {
+      for (const call of message.toolCalls ?? []) {
+        input.push({
+          type: "function_call",
+          call_id: call.id,
+          name: call.name,
+          // Azure wants a JSON string here. Serializing in the adapter means no
+          // caller above this layer has to know that.
+          arguments: JSON.stringify(call.arguments),
+        });
+      }
+    }
+  }
+
+  return input;
 }
 
 export function toTools(tools: readonly ToolCallSpec[]): Responses.FunctionTool[] {

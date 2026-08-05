@@ -23,13 +23,73 @@ import {
   APIError,
   APIUserAbortError,
 } from "@anthropic-ai/sdk";
-import type { Message, MessageParam, Tool, ToolChoice, Usage } from "@anthropic-ai/sdk/resources/messages";
+import type {
+  ContentBlockParam,
+  Message,
+  MessageParam,
+  Tool,
+  ToolChoice,
+  ToolResultBlockParam,
+  Usage,
+} from "@anthropic-ai/sdk/resources/messages";
 
+/**
+ * Build the Messages-API history, including tool round trips.
+ *
+ * Two rules this API enforces that Azure does not, and that shape the whole
+ * function:
+ *
+ *   1. A `tool_use` block lives *inside* the assistant turn that produced it.
+ *      Azure puts calls and outputs in one flat sibling list instead.
+ *   2. Every `tool_result` answering one parallel batch must sit in a *single*
+ *      user turn. Emitting one turn per result is a 400.
+ *
+ * Neither rule escapes this file, which is the point of adapters.
+ */
 export function toMessages(req: CompletionRequest): MessageParam[] {
-  return req.messages.map((message) => ({
-    role: message.role,
-    content: message.content,
-  }));
+  const messages: MessageParam[] = [];
+  /** The user turn currently collecting tool results, if one is open. */
+  let pendingResults: ToolResultBlockParam[] | undefined;
+
+  const flushResults = (): void => {
+    if (pendingResults === undefined) return;
+    messages.push({ role: "user", content: pendingResults });
+    pendingResults = undefined;
+  };
+
+  for (const message of req.messages) {
+    if (message.role === "tool") {
+      pendingResults ??= [];
+      pendingResults.push({
+        type: "tool_result",
+        tool_use_id: message.toolCallId,
+        content: message.content,
+        // A first-class failure flag, so the model is told the tool failed
+        // rather than left to infer it from the wording (AD-2).
+        ...(message.isError === true ? { is_error: true } : {}),
+      });
+      continue;
+    }
+
+    flushResults();
+
+    if (message.role === "user") {
+      messages.push({ role: "user", content: message.content });
+      continue;
+    }
+
+    const blocks: ContentBlockParam[] = [];
+    // An empty text block is a 400 here, not a harmless no-op, and a turn that
+    // was nothing but tool calls has exactly that.
+    if (message.content.length > 0) blocks.push({ type: "text", text: message.content });
+    for (const call of message.toolCalls ?? []) {
+      blocks.push({ type: "tool_use", id: call.id, name: call.name, input: call.arguments });
+    }
+    messages.push({ role: "assistant", content: blocks.length > 0 ? blocks : message.content });
+  }
+
+  flushResults();
+  return messages;
 }
 
 export function toTools(tools: readonly ToolCallSpec[]): Tool[] {

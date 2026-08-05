@@ -26,6 +26,20 @@ Callers never learn which one ran — `mechanism` in the response is
 observability, not control flow. That is what lets a local or future model
 drop in with no change above this layer.
 
+### The tool round trip (Phase 4, D-1)
+
+`Message` is a discriminated union — `UserMessage | AssistantMessage |
+ToolResultMessage` — not just `{ role, content }`. Phase 3 could ask a model to
+call a tool but had no way to send back what the tool returned; Phase 4's agent
+loop needed to, and the two providers put a call-and-result history on the wire
+in genuinely different shapes (Anthropic nests `tool_use` inside the assistant
+turn and *rejects* an unmatched `tool_result`; Azure wants flat sibling
+`function_call` / `function_call_output` items). Both translations are tested
+directly — `llm-provider-*/tests/tool-results.test.ts` — and the whole round
+trip is proven provider-independent by `tests/agent-loop-providers.test.ts` at
+the repo root, which runs one `runAgent` script against the fake and both real
+adapters over stubbed transports.
+
 ## What lives here
 
 - `types.ts` — `LLMProvider`, `CompletionRequest`/`Response`, `StructuredRequest`/`Response`,

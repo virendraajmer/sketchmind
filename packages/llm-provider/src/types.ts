@@ -15,12 +15,54 @@ import type { SketchMindError } from "@sketchmind/shared-types";
 import type { ZodType, z } from "zod";
 
 /** Roles every provider we target can express. */
-export type MessageRole = "user" | "assistant";
+export type MessageRole = "user" | "assistant" | "tool";
 
-export interface Message {
-  readonly role: MessageRole;
+export interface UserMessage {
+  readonly role: "user";
   readonly content: string;
 }
+
+/**
+ * An assistant turn, optionally including the tool calls it made.
+ *
+ * Phase 4, D-1: an agent loop has to replay its own tool calls back to the model
+ * on the next step. Anthropic in particular *rejects* a `tool_result` whose
+ * matching `tool_use` is absent from the history, so dropping this field would
+ * make multi-step loops fail against a real provider while passing every test
+ * against the fake.
+ */
+export interface AssistantMessage {
+  readonly role: "assistant";
+  /** May be empty when the turn was nothing but tool calls. */
+  readonly content: string;
+  readonly toolCalls?: readonly ToolCall[];
+}
+
+/**
+ * What a tool returned, keyed to the call that asked for it.
+ *
+ * `content` is always a string: the caller serializes whatever the handler
+ * produced. Modelling every provider's content-block vocabulary here would drag
+ * provider concepts into the interface for no gain -- both targets accept a
+ * string result.
+ *
+ * `isError` is first-class because AD-2 makes a failed tool result the
+ * interesting case rather than the exceptional one, and both providers can say
+ * "this one failed" natively.
+ */
+export interface ToolResultMessage {
+  readonly role: "tool";
+  readonly toolCallId: string;
+  readonly toolName: string;
+  readonly content: string;
+  readonly isError?: boolean;
+}
+
+/**
+ * The two-arm shape Phase 3 used is a strict subset of this union, so every
+ * existing call site still compiles.
+ */
+export type Message = UserMessage | AssistantMessage | ToolResultMessage;
 
 /**
  * A capability set. Read, never assumed: `completeStructured` picks its

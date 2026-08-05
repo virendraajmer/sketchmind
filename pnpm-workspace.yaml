@@ -1,3 +1,6 @@
 packages:
   - "apps/*"
   - "packages/*"
+  # Root-level contract, integration and system tests spanning several packages
+  # (Volume 11). Unit tests stay in packages/<name>/tests/.
+  - "tests"

@@ -152,7 +152,7 @@ export class AzureOpenAIProvider implements LLMProvider {
       this.client.responses.create(this.baseParams(req), { signal: req.signal }),
     );
     return {
-      text: response.output_text,
+      text: response.output_text ?? "",
       usage: toUsage(response.usage),
       model: response.model,
       finishReason: toFinishReason(response),
@@ -191,7 +191,7 @@ export class AzureOpenAIProvider implements LLMProvider {
         ),
       );
 
-      const parsed = this.tryParse(req.schema, response.output_text);
+      const parsed = this.tryParse(req.schema, response.output_text ?? "");
       if (parsed !== undefined) {
         return {
           value: parsed,
@@ -254,7 +254,7 @@ export class AzureOpenAIProvider implements LLMProvider {
 
     return {
       toolCalls: toToolCalls(response),
-      text: response.output_text,
+      text: response.output_text ?? "",
       usage: toUsage(response.usage),
       model: response.model,
       finishReason: toFinishReason(response),
@@ -296,7 +296,7 @@ export class AzureOpenAIProvider implements LLMProvider {
     );
 
     return {
-      text: response.output_text,
+      text: response.output_text ?? "",
       usage: toUsage(response.usage),
       model: response.model,
       finishReason: toFinishReason(response),

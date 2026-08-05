@@ -146,7 +146,12 @@ export class FakeProvider implements LLMProvider {
     const toolCalls = this.toolCallQueue[index] ?? [];
     return {
       toolCalls,
-      text: toolCalls.length > 0 ? "" : response.text,
+      // Text *and* tool calls, because that is what real providers do: Anthropic
+      // emits a text block beside its `tool_use` blocks, and Azure can return a
+      // message item beside its `function_call` items. A fake that blanked the
+      // text would hide the agent's reasoning from the trace in tests and show
+      // it in production.
+      text: response.text,
       usage: response.usage,
       model: this.model,
       finishReason: toolCalls.length > 0 ? "tool_calls" : "stop",

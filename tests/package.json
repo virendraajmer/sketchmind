@@ -1,0 +1,24 @@
+{
+  "name": "@sketchmind/tests",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@sketchmind/agent-core": "workspace:*",
+    "@sketchmind/agent-memory": "workspace:*",
+    "@sketchmind/llm-provider": "workspace:*",
+    "@sketchmind/llm-provider-anthropic": "workspace:*",
+    "@sketchmind/llm-provider-azure-openai": "workspace:*",
+    "@sketchmind/shared-types": "workspace:*",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
+    "openai": "^7.4.0"
+  }
+}

@@ -166,6 +166,78 @@ export function describeProviderContract(name: string, options: ProviderContract
       timeout,
     );
 
+    it(
+      "accepts a history containing a tool call and its result",
+      async () => {
+        const provider = options.make();
+        if (!provider.capabilities.toolCalling) return;
+
+        // The shape every agent step after the first has to send (Phase 4, D-1).
+        // Providers differ sharply on how this is encoded -- flat sibling items
+        // vs. nested content blocks -- so "it does not reject the history" is a
+        // real contract, not a formality.
+        const response = await provider.complete({
+          messages: [
+            { role: "user", content: "Draw a circle labelled 'wheel'." },
+            {
+              role: "assistant",
+              content: "",
+              toolCalls: [
+                { id: "call_1", name: "draw_shape", arguments: { shape: "circle", label: "wheel" } },
+              ],
+            },
+            {
+              role: "tool",
+              toolCallId: "call_1",
+              toolName: "draw_shape",
+              content: JSON.stringify({ drawn: true }),
+            },
+            { role: "user", content: "Say 'done' if that worked." },
+          ],
+          maxOutputTokens: 32,
+        });
+
+        expect(typeof response.text).toBe("string");
+        expect(response.usage.totalTokens).toBe(
+          response.usage.inputTokens + response.usage.outputTokens,
+        );
+      },
+      timeout,
+    );
+
+    it(
+      "reports a failed tool result without treating it as an exception (AD-2)",
+      async () => {
+        const provider = options.make();
+        if (!provider.capabilities.toolCalling) return;
+
+        // A tool failure is an observation the model gets to act on. If a
+        // provider threw here, the whole recovery story in AD-2 would collapse.
+        const response = await provider.complete({
+          messages: [
+            { role: "user", content: "Draw a dodecahedron." },
+            {
+              role: "assistant",
+              content: "",
+              toolCalls: [{ id: "call_1", name: "draw_shape", arguments: { shape: "dodecahedron" } }],
+            },
+            {
+              role: "tool",
+              toolCallId: "call_1",
+              toolName: "draw_shape",
+              content: "Unknown shape 'dodecahedron'. Supported: circle, square, triangle.",
+              isError: true,
+            },
+            { role: "user", content: "Pick a supported shape." },
+          ],
+          maxOutputTokens: 32,
+        });
+
+        expect(typeof response.text).toBe("string");
+      },
+      timeout,
+    );
+
     it("refuses image input while vision is disabled, without touching the images", async () => {
       const provider = options.make();
       if (provider.capabilities.vision) return;

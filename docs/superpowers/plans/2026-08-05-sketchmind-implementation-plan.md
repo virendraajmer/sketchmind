@@ -930,22 +930,32 @@ export interface LLMProvider {
 
 ---
 
-## Phase 4 — Agent Core & Memory
+## Phase 4 — Agent Core & Memory ✅ COMPLETE
 
 **Deliverable:** a working agent loop with tools, budgets, tracing, and persistent memory — the spine everything else plugs into (AD-1, AD-4, AD-7, AD-8).
 **Packages:** `agent-core`, `agent-memory`.
+
+> Detailed plan and outcome: `2026-08-05-phase-4-agent-core-memory.md`.
+> 94 new tests across `agent-core`/`agent-memory`, plus a `llm-provider` amendment and the repo's
+> first use of the root `tests/` workspace. One deviation, recorded there as Phase 4's own D-1:
+> Phase 3's `Message` type had no way to carry a tool's result back to the model, invisible until an
+> actual loop tried to run more than one step. `Message` became a discriminated union
+> (`UserMessage | AssistantMessage | ToolResultMessage`); both adapters' translations differ sharply
+> (Azure: flat sibling `function_call`/`function_call_output` items; Anthropic: `tool_use` nested in
+> the assistant turn, `tool_result` batches merged into one user turn, and it rejects anything else
+> outright), which is exactly the kind of gap only a real second adapter surfaces.
 
 **`agent-core`:** loop is `observe → reason → select tool(s) → execute → observe → …` until goal or budget exhausted. Provides tool registry with Zod-typed args, parallel tool calls where the provider supports it, step/token/time budgets, cancellation token, structured `AgentTrace` per step, and **tool failure as observation, not crash** (AD-2). Depends on `llm-provider` — never a concrete provider.
 
 **`agent-memory`:** session working memory (what's been drawn, what the user asked, what failed) plus a persisted learned-primitive store with semantic recall. Tools: `recall(query)`, `learn(primitive)`, `forget(id)`. Pluggable backend — start with local file + embedding index; swappable for a vector DB later.
 
 **Acceptance:**
-- [ ] A toy agent with 2 fake tools completes a multi-step goal and emits a full trace.
-- [ ] A tool that throws produces an observation the agent recovers from — the run does not fail (AD-2).
-- [ ] Exceeding step/token/time budget terminates cleanly with a partial result, never a hang.
-- [ ] Cancellation mid-run stops within one step boundary and releases resources.
-- [ ] `recall` returns a semantically similar stored primitive for a differently-worded query ("nephron" matches a stored "kidney nephron unit") — AD-7.
-- [ ] The loop runs identically against fake and Azure providers.
+- [x] A toy agent with 2 fake tools completes a multi-step goal and emits a full trace.
+- [x] A tool that throws produces an observation the agent recovers from — the run does not fail (AD-2).
+- [x] Exceeding step/token/time budget terminates cleanly with a partial result, never a hang.
+- [x] Cancellation mid-run stops within one step boundary and releases resources.
+- [x] `recall` returns a semantically similar stored primitive for a differently-worded query ("nephron" matches a stored "kidney nephron unit") — AD-7. Default recall tier is lexical (token + trigram hashing, zero tokens, deterministic); a real `EmbeddingProvider` is a documented, tested drop-in for the synonym cases the lexical tier cannot reach.
+- [x] The loop runs identically against fake and Azure providers — extended to Anthropic as well, all three via one test body (`tests/agent-loop-providers.test.ts`).
 
 ---
 
