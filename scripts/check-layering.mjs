@@ -23,14 +23,21 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-/** Lower index == higher layer. A package may only depend downward or sideways. */
+/**
+ * Lower index == higher layer. A package may only depend downward or sideways.
+ *
+ * `tools` sits ABOVE `agent`, which reads backwards against the plan's
+ * "Applications -> Agent -> Tools -> Core" until you notice that chain describes
+ * *call flow*, not *imports*. The import direction is the opposite one and was
+ * settled in Phase 4: `agent-core` deliberately knows nothing about any tool
+ * package ("Phases 5-12 add tools to it and never modify it"), while every tool
+ * package needs `defineTool` from it -- exactly as `agent-memory` already does.
+ * Placing tools below agent would make Phase 5 unimplementable without either
+ * duplicating the tool-definition format or splitting `agent-core` in two.
+ */
 const LAYERS = [
   { name: "app", members: ["@sketchmind/web", "@sketchmind/api"] },
   { name: "orchestrator", members: ["@sketchmind/ai-orchestrator"] },
-  {
-    name: "agent",
-    members: ["@sketchmind/agent-core", "@sketchmind/agent-memory", "@sketchmind/agent-vision"]
-  },
   {
     name: "tools",
     members: [
@@ -38,6 +45,10 @@ const LAYERS = [
       "@sketchmind/agent-tools-geometry",
       "@sketchmind/agent-tools-canvas"
     ]
+  },
+  {
+    name: "agent",
+    members: ["@sketchmind/agent-core", "@sketchmind/agent-memory", "@sketchmind/agent-vision"]
   },
   {
     name: "core",

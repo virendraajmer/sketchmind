@@ -18,6 +18,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json"
   },
   "dependencies": {
-    "@sketchmind/shared-types": "workspace:*"
+    "@sketchmind/diagram-ast": "workspace:*",
+    "@sketchmind/llm-provider": "workspace:*",
+    "@sketchmind/shared-types": "workspace:*",
+    "zod": "^4.4.3"
   }
 }

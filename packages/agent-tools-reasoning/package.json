@@ -18,6 +18,15 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json"
   },
   "dependencies": {
-    "@sketchmind/shared-types": "workspace:*"
+    "@sketchmind/agent-core": "workspace:*",
+    "@sketchmind/agent-memory": "workspace:*",
+    "@sketchmind/diagram-ast": "workspace:*",
+    "@sketchmind/diagram-reasoner": "workspace:*",
+    "@sketchmind/intent-analyzer": "workspace:*",
+    "@sketchmind/llm-provider": "workspace:*",
+    "@sketchmind/shape-intelligence": "workspace:*",
+    "@sketchmind/shared-types": "workspace:*",
+    "@sketchmind/visual-planner": "workspace:*",
+    "zod": "^4.4.3"
   }
 }

@@ -967,12 +967,17 @@ export interface LLMProvider {
 Each stage keeps its V12/V15 contract but is exposed as a tool: `analyze_intent`, `plan_visual`, `build_shape_graph`, `compose_diagram_ast`, `validate_diagram`, plus `search_primitives` / `generate_primitive` / `compose_freeform` (AD-5). Prompts live as versioned data files following V15's Standard Prompt Template with few-shot examples, isolated from application code.
 
 **Acceptance:**
-- [ ] "Draw a movable pulley" produces a valid `DiagramAST` with ceiling, fixed pulley, movable pulley, rope, load.
-- [ ] "Draw a circle" completes with **fewer tool calls** than the pulley — proving adaptive depth (AD-1).
-- [ ] A deliberately malformed AST returns structured errors the agent fixes on a subsequent step (AD-2), verifiable in the trace.
-- [ ] `search_primitives` is consulted before `generate_primitive` (V10).
-- [ ] No agent output contains `x`, `y`, `svg`, or `canvasCommand` fields.
-- [ ] All tools unit-tested against the fake provider — no network in the default suite.
+- [x] "Draw a movable pulley" produces a valid `DiagramAST` with ceiling, fixed pulley, movable pulley, rope, load.
+- [x] "Draw a circle" completes with **fewer tool calls** than the pulley — proving adaptive depth (AD-1). One reasoning round trip against four.
+- [x] A deliberately malformed AST returns structured errors the agent fixes on a subsequent step (AD-2), verifiable in the trace — `AST_ORPHAN_OBJECT` naming `rope_2`, run continues, recheck passes.
+- [x] `search_primitives` is consulted before `generate_primitive` (V10). Enforced inside `generatePrimitive`, so no code path generates without having searched.
+- [x] No agent output contains `x`, `y`, `svg`, or `canvasCommand` fields. Checked at runtime on every tool result, not only in the schemas — the open `metadata`/`properties` bags are where geometry would otherwise hide.
+- [x] All tools unit-tested against the fake provider — no network in the default suite.
+
+**Discovered during implementation:** the `LAYERS` order had `tools` below `agent`, which made every
+tool package's `defineTool` import an upward dependency. The plan's "Applications → Agent → Tools →
+Core" chain is call flow, not imports; `agent-core` deliberately imports no tool package. `tools` now
+sits above `agent`. See `docs/superpowers/plans/2026-08-05-phase-5-reasoning-tools.md` (D-1–D-10).
 
 ---
 

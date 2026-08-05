@@ -121,9 +121,36 @@ importers:
 
   packages/agent-tools-reasoning:
     dependencies:
+      '@sketchmind/agent-core':
+        specifier: workspace:*
+        version: link:../agent-core
+      '@sketchmind/agent-memory':
+        specifier: workspace:*
+        version: link:../agent-memory
+      '@sketchmind/diagram-ast':
+        specifier: workspace:*
+        version: link:../diagram-ast
+      '@sketchmind/diagram-reasoner':
+        specifier: workspace:*
+        version: link:../diagram-reasoner
+      '@sketchmind/intent-analyzer':
+        specifier: workspace:*
+        version: link:../intent-analyzer
+      '@sketchmind/llm-provider':
+        specifier: workspace:*
+        version: link:../llm-provider
+      '@sketchmind/shape-intelligence':
+        specifier: workspace:*
+        version: link:../shape-intelligence
       '@sketchmind/shared-types':
         specifier: workspace:*
         version: link:../shared-types
+      '@sketchmind/visual-planner':
+        specifier: workspace:*
+        version: link:../visual-planner
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
 
   packages/agent-vision:
     dependencies:
@@ -151,9 +178,18 @@ importers:
 
   packages/diagram-reasoner:
     dependencies:
+      '@sketchmind/diagram-ast':
+        specifier: workspace:*
+        version: link:../diagram-ast
+      '@sketchmind/llm-provider':
+        specifier: workspace:*
+        version: link:../llm-provider
       '@sketchmind/shared-types':
         specifier: workspace:*
         version: link:../shared-types
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
 
   packages/export-engine:
     dependencies:
@@ -163,9 +199,15 @@ importers:
 
   packages/intent-analyzer:
     dependencies:
+      '@sketchmind/llm-provider':
+        specifier: workspace:*
+        version: link:../llm-provider
       '@sketchmind/shared-types':
         specifier: workspace:*
         version: link:../shared-types
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
 
   packages/layout-engine:
     dependencies:
@@ -260,9 +302,15 @@ importers:
 
   packages/shape-intelligence:
     dependencies:
+      '@sketchmind/llm-provider':
+        specifier: workspace:*
+        version: link:../llm-provider
       '@sketchmind/shared-types':
         specifier: workspace:*
         version: link:../shared-types
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
 
   packages/shared-types:
     dependencies:
@@ -290,9 +338,15 @@ importers:
 
   packages/visual-planner:
     dependencies:
+      '@sketchmind/llm-provider':
+        specifier: workspace:*
+        version: link:../llm-provider
       '@sketchmind/shared-types':
         specifier: workspace:*
         version: link:../shared-types
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
 
   tests:
     dependencies:
@@ -302,6 +356,12 @@ importers:
       '@sketchmind/agent-memory':
         specifier: workspace:*
         version: link:../packages/agent-memory
+      '@sketchmind/agent-tools-reasoning':
+        specifier: workspace:*
+        version: link:../packages/agent-tools-reasoning
+      '@sketchmind/diagram-ast':
+        specifier: workspace:*
+        version: link:../packages/diagram-ast
       '@sketchmind/llm-provider':
         specifier: workspace:*
         version: link:../packages/llm-provider
@@ -311,6 +371,9 @@ importers:
       '@sketchmind/llm-provider-azure-openai':
         specifier: workspace:*
         version: link:../packages/llm-provider-azure-openai
+      '@sketchmind/shape-intelligence':
+        specifier: workspace:*
+        version: link:../packages/shape-intelligence
       '@sketchmind/shared-types':
         specifier: workspace:*
         version: link:../packages/shared-types

@@ -56,8 +56,8 @@ faster than full TS resolution):
 ```
 apps (web, api)
   → agent-orchestrator (ai-orchestrator)
-  → agent (agent-core, agent-memory, agent-vision)
   → tools (agent-tools-reasoning, agent-tools-geometry, agent-tools-canvas)
+  → agent (agent-core, agent-memory, agent-vision)
   → core (intent-analyzer, visual-planner, shape-intelligence, diagram-reasoner, diagram-ast,
           constraint-engine, layout-engine, stroke-planner, stroke-runtime, primitive-sdk,
           plugin-sdk, export-engine, session-protocol)
@@ -70,6 +70,10 @@ A package may depend on its own layer or anything below; never upward. New packa
 to the `LAYERS` list in `scripts/check-layering.mjs` or CI fails. Shared models live only in
 `shared-types` — never duplicated elsewhere. Within a package, only `src/index.ts` (the public
 API) is importable from outside; `src/internal/**` is private and eslint-enforced.
+
+Note `tools` sits **above** `agent`, which reads backwards against the plan's "Applications → Agent
+→ Tools → Core" until you notice that chain is call flow, not imports. `agent-core` deliberately
+knows nothing about any tool package; every tool package needs `defineTool` from it.
 
 **The four pipeline models stay separate** and never blur: Diagram AST (semantic, no coordinates),
 Constraint Graph (relationships), Layout Model (the *only* model allowed numeric geometry), Stroke
@@ -96,6 +100,8 @@ overrides back to `Bundler` because Next.js requires it.
 
 ## Project status
 
-Phases 1–4 complete (repo foundation, core models, LLM provider abstraction, agent-core +
-agent-memory). Phase 5 (reasoning tools) is next. See the implementation plan doc for phase-by-
-phase scope and acceptance criteria before starting new package work.
+Phases 1–5 complete (repo foundation, core models, LLM provider abstraction, agent-core +
+agent-memory, reasoning tools). Phase 6 (constraint-engine + layout-engine — deterministic, no AI)
+is next. See the implementation plan doc for phase-by-phase scope and acceptance criteria before
+starting new package work, plus `docs/superpowers/plans/2026-08-05-phase-5-reasoning-tools.md` for
+the decisions Phase 5 settled (prompt templates as data, the geometry guard, `ReasoningWorkspace`).

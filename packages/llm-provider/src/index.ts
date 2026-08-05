@@ -19,6 +19,7 @@ export const PACKAGE_VERSION = "0.0.1";
 export * from "./types.js";
 export * from "./fake.js";
 export * from "./registry.js";
+export * from "./structured-result.js";
 export * from "./logging.js";
 
 export {

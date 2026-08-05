@@ -11,6 +11,9 @@
   "dependencies": {
     "@sketchmind/agent-core": "workspace:*",
     "@sketchmind/agent-memory": "workspace:*",
+    "@sketchmind/agent-tools-reasoning": "workspace:*",
+    "@sketchmind/diagram-ast": "workspace:*",
+    "@sketchmind/shape-intelligence": "workspace:*",
     "@sketchmind/llm-provider": "workspace:*",
     "@sketchmind/llm-provider-anthropic": "workspace:*",
     "@sketchmind/llm-provider-azure-openai": "workspace:*",
