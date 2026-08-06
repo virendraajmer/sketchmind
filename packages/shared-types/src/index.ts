@@ -25,6 +25,7 @@ export * from "./shape-graph.js";
 export * from "./diagram.js";
 export * from "./layout.js";
 export * from "./stroke.js";
+export * from "./critique.js";
 export * from "./freeform.js";
 export * from "./runtime.js";
 export * from "./agent.js";

@@ -13,6 +13,7 @@ import { SketchMindErrorSchema } from "./errors.js";
 import { DiagramASTSchema } from "./diagram.js";
 import { DrawingFrameSchema } from "./stroke.js";
 import { BoundingBoxSchema } from "./layout.js";
+import { CritiqueFindingSchema, CritiqueTierSchema } from "./critique.js";
 
 export const SessionStatusSchema = z.enum([
   "pending",
@@ -110,7 +111,9 @@ export const RuntimeEventSchema = z.discriminatedUnion("type", [
   z.object({
     ...base,
     type: z.literal("VisionCritique"),
-    findings: z.array(z.string()),
+    tier: CritiqueTierSchema,
+    findings: z.array(CritiqueFindingSchema),
+    /** Whether the agent acted on these findings or judged them not worth it. */
     accepted: z.boolean(),
   }),
   z.object({ ...base, type: z.literal("StrokeStarted"), strokeId: z.string().min(1) }),
