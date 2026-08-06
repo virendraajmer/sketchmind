@@ -307,7 +307,17 @@ export function useSession(getBitmap?: () => Promise<ImageBitmap>): Session {
               // the out-of-band case.
               console.error("[studio] vision agent run failed:", error);
             })
-            .finally(close);
+            .finally(() => {
+              // `close()` reads `source.current` fresh, not the `stream`
+              // this deferred close was scheduled for -- if a later
+              // `start()` call already replaced `source.current` with a new
+              // session's EventSource by the time this settles, closing
+              // through the shared `close()` would silently tear down that
+              // *other* session's live stream instead of this (already
+              // superseded) one. Guard on identity: only close if the ref
+              // still points at the stream this deferred close belongs to.
+              if (source.current === stream) close();
+            });
           return;
         }
 
