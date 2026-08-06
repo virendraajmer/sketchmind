@@ -67,4 +67,35 @@ describe("startVisionAgent", () => {
       expect(url.startsWith("http://localhost:3001/")).toBe(true);
     }
   });
+
+  it("throws on a refused critique instead of reporting a clean board", async () => {
+    // `return []` would tell the agent the drawing is fine -- the one thing the
+    // critique route's contract says must never look like a closed gate, an
+    // exhausted round budget or an unreachable upstream. `agent-core` turns the
+    // throw into a `TOOL_THREW` outcome the agent can see and reason about.
+    const urls: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      urls.push(String(input));
+      return new Response("Visual critique is switched off.", { status: 503 });
+    });
+
+    await expect(
+      startVisionAgent({
+        sessionId: "s1",
+        request: "draw a box",
+        visionEnabled: true,
+        apiBase: "http://localhost:3001",
+        capture: async () => ({
+          ok: true,
+          value: { mimeType: "image/png", width: 1, height: 1, data: new Uint8Array([0]) },
+        }),
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toThrow(/503/);
+
+    // And the failure must not have been laundered into a "nothing to fix"
+    // report: no findings were posted at all.
+    expect(urls.some((url) => url.includes("/findings"))).toBe(false);
+  });
 });

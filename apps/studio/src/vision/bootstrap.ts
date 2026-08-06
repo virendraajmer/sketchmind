@@ -8,7 +8,7 @@
  */
 import { runVisionAgent } from "@sketchmind/agent-vision";
 import { createProxyProvider } from "@sketchmind/llm-provider";
-import type { CritiqueFinding, ValidationResult } from "@sketchmind/shared-types";
+import type { AgentTraceStep, CritiqueFinding, ValidationResult } from "@sketchmind/shared-types";
 import type { CapturedImage } from "./captureClient.js";
 
 export interface StartVisionAgentOptions {
@@ -19,6 +19,13 @@ export interface StartVisionAgentOptions {
   readonly fetchImpl?: typeof fetch;
   readonly signal: AbortSignal;
   readonly apiBase?: string;
+  /**
+   * Where the client agent's own trace goes. Both loci are traced -- every
+   * agent step is traced and streamed to the UI, a repo-wide invariant. The
+   * server's steps arrive as `AgentStep` events on the SSE stream; the client's
+   * never touch the wire, so this callback is their only route to the panel.
+   */
+  readonly onStep?: (step: AgentTraceStep) => void;
 }
 
 /**
@@ -47,6 +54,7 @@ export async function startVisionAgent(options: StartVisionAgentOptions): Promis
     visionEnabled: true,
     signal: options.signal,
     capture: options.capture,
+    ...(options.onStep ? { onStep: options.onStep } : {}),
 
     critique: async (image) => {
       const response = await doFetch(`${base}/api/agent/vision-critique`, {
@@ -61,7 +69,25 @@ export async function startVisionAgent(options: StartVisionAgentOptions): Promis
         }),
         signal: options.signal,
       });
-      if (!response.ok) return [];
+      // Throw, never `return []`. An empty findings array is a verdict -- "the
+      // drawing is fine" -- and the critique route's own contract is that "no
+      // findings" and "critique never ran" must not look alike (see the file
+      // header of `apps/api/src/routes/vision.ts`). A 503 (gate shut), 429
+      // (rounds spent), 413 (too large), 400 (bad request) or 502 (upstream
+      // down) collapsed into `[]` would tell the agent the board is clean.
+      //
+      // Nothing catches this locally on purpose: `agent-core`'s
+      // `executeToolCall` already wraps every handler call and turns a throw
+      // into a `TOOL_THREW` outcome the agent reads on its next step (AD-2), so
+      // the failure becomes something it can reason about rather than something
+      // it silently believes.
+      if (!response.ok) {
+        const detail = await response.text().catch(() => "");
+        throw new Error(
+          `The critique service answered ${response.status}` +
+            `${detail ? `: ${detail.slice(0, 500)}` : "."}`,
+        );
+      }
       return ((await response.json()) as { findings: CritiqueFinding[] }).findings;
     },
 

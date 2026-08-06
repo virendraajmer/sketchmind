@@ -99,12 +99,44 @@ function reduce(state: SessionState, event: RuntimeEvent): SessionState {
     case "SessionCancelled":
       return { ...state, phase: "cancelled" };
 
+    /**
+     * Critique is folded into the same trace the agent's own steps use rather
+     * than getting a panel of its own: a critique round *is* a thing that
+     * happened in the run, in sequence with the steps around it, and the
+     * acceptance criterion is only that findings "appear in the trace panel
+     * tagged with their tier". `accepted` is the part a viewer actually needs
+     * -- it separates "the agent is redrawing because of this" from "the agent
+     * looked and decided not to".
+     *
+     * The synthetic `stepId` is namespaced away from `agent-core`'s
+     * `${sessionId}-${n}` ids so it cannot collide with a real step's React key.
+     */
+    case "VisionCritique":
+      return {
+        ...state,
+        steps: [
+          ...state.steps,
+          {
+            stepId: `critique-${state.steps.length}-${event.at}`,
+            locus: "server",
+            toolName: `critique (${event.tier})`,
+            thought: event.accepted
+              ? `${event.findings.length} finding(s) accepted — repairing.`
+              : `${event.findings.length} finding(s) not acted on.`,
+            toolResult: event.findings,
+            tokensIn: 0,
+            tokensOut: 0,
+            durationMs: 0,
+            timestamp: event.at,
+          },
+        ],
+      };
+
     case "StageStarted":
     case "StageCompleted":
     case "StrokeStarted":
     case "PlaybackPaused":
     case "PlaybackResumed":
-    case "VisionCritique":
       return state;
   }
 }
@@ -173,6 +205,23 @@ export function useSession(getBitmap?: () => Promise<ImageBitmap>): Session {
     }
     applyPendingFrame();
   }, [applyPendingFrame]);
+
+  /**
+   * The client agent's steps, into the same `steps` list the server's go into.
+   * They never cross the wire (the loop runs here), so this callback is the only
+   * route they have to the trace panel -- without it the client locus is the one
+   * agent in the system with no trace at all.
+   *
+   * The id is prefixed because `agent-core` numbers steps `${sessionId}-${n}`
+   * per run and both loci run under the *same* session id, so the client's first
+   * step would otherwise collide with the server's first step as a React key.
+   */
+  const appendClientStep = useCallback((step: AgentTraceStep) => {
+    setState((current) => ({
+      ...current,
+      steps: [...current.steps, { ...step, stepId: `client-${step.stepId}` }],
+    }));
+  }, []);
 
   const close = useCallback(() => {
     source.current?.close();
@@ -282,6 +331,7 @@ export function useSession(getBitmap?: () => Promise<ImageBitmap>): Session {
             visionEnabled,
             apiBase: API,
             signal: controller.signal,
+            onStep: appendClientStep,
             capture: async () => {
               if (!getBitmap) {
                 return { ok: false, errors: [] };
@@ -335,7 +385,7 @@ export function useSession(getBitmap?: () => Promise<ImageBitmap>): Session {
         }
       };
     },
-    [close, scheduleFrame, flushPendingFrame, getBitmap],
+    [close, scheduleFrame, flushPendingFrame, appendClientStep, getBitmap],
   );
 
   const cancel = useCallback(async () => {

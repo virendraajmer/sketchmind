@@ -97,6 +97,82 @@ describe("useSession frame batching", () => {
   });
 });
 
+describe("useSession trace", () => {
+  const finding = {
+    id: "f1",
+    tier: "visual",
+    check: "overlap",
+    severity: "error",
+    message: "The load overlaps the pulley.",
+    objectIds: ["pulley", "load"],
+  };
+
+  it("folds a VisionCritique into the trace instead of dropping it", async () => {
+    const { result } = renderHook(() => useSession());
+    await act(async () => {
+      void result.current.start("draw a box");
+    });
+    await waitFor(() => expect(FakeEventSource.last).toBeDefined());
+    const stream = FakeEventSource.last!;
+
+    act(() => {
+      stream.deliver(event("SessionStarted"));
+      stream.deliver(
+        event("VisionCritique", { tier: "visual", findings: [finding], accepted: true }),
+      );
+    });
+
+    // The trace panel is the only place critique is ever visible; `return state`
+    // meant tier 2 left no trace of having run at all.
+    expect(result.current.state.steps).toHaveLength(1);
+    const [step] = result.current.state.steps;
+    expect(step?.toolName).toContain("visual");
+    expect(step?.toolResult).toEqual([finding]);
+  });
+
+  it("traces the client agent's own steps alongside the server's", async () => {
+    const { startVisionAgent } = await import("../src/vision/bootstrap.js");
+    vi.mocked(startVisionAgent).mockImplementation(async (options) => {
+      options.onStep?.({
+        // `agent-core` numbers steps `${sessionId}-${n}`, and both loci run
+        // under the same session id -- so this deliberately collides with the
+        // server step delivered below unless `useSession` namespaces it.
+        stepId: "s1-1",
+        locus: "client",
+        toolName: "capture_canvas",
+        tokensIn: 1,
+        tokensOut: 2,
+        durationMs: 3,
+        timestamp: "2026-08-06T00:00:01.000Z",
+      });
+    });
+
+    const { result } = renderHook(() => useSession());
+    await act(async () => {
+      void result.current.start("draw a box");
+    });
+    await waitFor(() => expect(FakeEventSource.last).toBeDefined());
+    const stream = FakeEventSource.last!;
+
+    await act(async () => {
+      stream.deliver(event("SessionStarted", { visionEnabled: true }));
+      stream.deliver(
+        event("AgentStep", { stepId: "s1-1", locus: "server", toolName: "plan_strokes" }),
+      );
+      stream.deliver(event("SessionCompleted", { durationMs: 1 }));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(result.current.state.steps).toHaveLength(2));
+    const names = result.current.state.steps.map((s) => s.toolName);
+    expect(names).toEqual(["plan_strokes", "capture_canvas"]);
+
+    // Distinct React keys: the client locus must not shadow the server's step.
+    const ids = result.current.state.steps.map((s) => s.stepId);
+    expect(new Set(ids).size).toBe(2);
+  });
+});
+
 describe("useSession deferred close (vision enabled)", () => {
   it("does not let a still-pending vision agent's deferred close tear down a later session's stream", async () => {
     const { startVisionAgent } = await import("../src/vision/bootstrap.js");
