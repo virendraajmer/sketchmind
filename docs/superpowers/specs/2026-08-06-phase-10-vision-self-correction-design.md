@@ -238,15 +238,62 @@ The session's single `AbortController` covers repair turns, so cancellation sema
 
 ## Gating
 
+### The vision provider is resolved independently of the session provider
+
+Critique needs a model that accepts text **and** images. The model driving the session may not be
+one, and may never be one — so the two are separate resolutions through the same registry, not one
+provider used twice:
+
+```ts
+// apps/api/src/provider.ts
+export function resolveVisionProvider(
+  env: NodeJS.ProcessEnv = process.env,
+): LLMProvider | undefined {
+  const id = env["SKETCHMIND_VISION_PROVIDER"]?.trim() || env[PROVIDER_ENV_VAR]?.trim();
+  if (!id) return undefined;
+  const provider = createProviderFromEnv(buildProviderRegistry(), { ...env, [PROVIDER_ENV_VAR]: id });
+  return provider.capabilities.vision ? provider : undefined;
+}
+```
+
+`SKETCHMIND_VISION_PROVIDER` names any id in the registry and falls back to the session provider
+when unset. So a deployment can run its session on a text-only Azure deployment and its critique on
+Anthropic, or on whatever adapter is added later, by setting one variable. Adding a vision-capable
+provider is still "one new `llm-provider-*` package plus one config value" — this phase introduces
+no second rule.
+
+The critique route holds the vision provider; the session holds the session provider. Neither
+knows the other's id.
+
+### The gate
+
 ```ts
 visualCritiqueEnabled =
-     config.vision.mode === "on"
-  && provider.capabilities.vision
+     modeAllows(config.vision.mode)              // "on" | "auto" (see below)
+  && visionProvider !== undefined                // resolved AND capabilities.vision === true
   && renderer.capabilities.captureImage
   && renderer.capabilities.raster;
 ```
 
-All three must pass. Any one false leaves the tier inert rather than failing at request time.
+All must pass. Any one false leaves the tier inert rather than failing at request time.
+
+`SKETCHMIND_VISION_MODE` takes three values:
+
+| Value | Behaviour |
+|---|---|
+| `off` (default) | Tier 2 never runs, whatever the provider can do |
+| `auto` | Tier 2 runs **iff** a vision-capable provider resolves — the "we found a model that can do this" case, with no config change beyond pointing at it |
+| `on` | Tier 2 is required; if no vision-capable provider resolves, the server logs a loud misconfiguration warning at boot rather than silently degrading |
+
+`auto` is the answer to "later we may find a capable model": point `SKETCHMIND_VISION_PROVIDER` (or
+the session provider) at it and the tier turns itself on. `off` remains the default so that
+enabling vision is always a deliberate act, and `on` exists so a deployment that depends on
+critique finds out at boot instead of mid-session.
+
+Capability is read from `provider.capabilities.vision`, never from the provider's id. Where an
+adapter supports it, `probeCapabilities()` may be called once at boot to verify the declaration
+against the live endpoint (D-5) — an adapter that claims vision and cannot deliver it is caught
+there rather than on the first upload.
 
 The session-start payload gains `visionEnabled: boolean`. When it is false, `apps/studio` builds
 the client agent **without** `capture_canvas` and `critique_canvas` in its registry. With vision
@@ -264,7 +311,8 @@ All of it lands on `ApiConfig.vision`, read once in `apps/api/src/config.ts` —
 | Variable | Default | Meaning |
 |---|---|---|
 | `SKETCHMIND_GEOMETRIC_CRITIQUE` | `on` | Tier 1 master switch |
-| `SKETCHMIND_VISION_MODE` | `off` | Tier 2 master switch |
+| `SKETCHMIND_VISION_MODE` | `off` | Tier 2 switch: `off` \| `auto` \| `on` |
+| `SKETCHMIND_VISION_PROVIDER` | *(session provider)* | Registry id of the provider used for image critique |
 | `SKETCHMIND_VISION_MAX_ROUNDS` | `2` | Client critique rounds per session |
 | `SKETCHMIND_VISION_MAX_IMAGE_BYTES` | `4_000_000` | Upload cap on the critique route |
 | `SKETCHMIND_REPAIR_MAX_ROUNDS` | `2` | Repair turns per session, both tiers combined |
@@ -275,9 +323,9 @@ object.
 
 The plan's original switch, `AZURE_OPENAI_VISION_DEPLOYMENT`, is deliberately **not** part of this
 gate. It is an Azure-specific variable and belongs to `llm-provider-azure-openai`, which is the only
-package allowed to read it; its effect reaches this gate through
-`provider.capabilities.vision`. `SKETCHMIND_VISION_MODE` is the provider-independent switch, which
-keeps the gate identical when the Anthropic adapter is the one in use.
+package allowed to read it; its effect reaches this gate through `provider.capabilities.vision`.
+Nothing in `agent-vision`, `apps/api` or `apps/studio` names a vendor, an Azure variable, or a
+provider id — the gate would read identically if Azure were removed from the repo entirely.
 
 ## Error handling
 
@@ -300,6 +348,9 @@ keeps the gate identical when the Anthropic adapter is the one in use.
 | Repair cap | A fixture that always produces findings terminates at the round cap |
 | Vision-off | Client registry contains no `capture_canvas`/`critique_canvas`; no `completeWithImages` call is made; no image bytes are produced. Asserted in code, not by configuration |
 | Vision-on with `FakeProvider` | Setting the config value enables tier 2 with **no code change** |
+| Provider independence | A `FakeProvider` registered under two different ids, one with `vision: true`, drives the whole tier-2 path identically. A grep over `agent-vision`, the critique route and `apps/studio` finds no vendor name, no provider id and no `AZURE_*` variable |
+| Split providers | `SKETCHMIND_VISION_PROVIDER` pointing at a different registry id than the session provider is honoured; the session provider's `completeWithImages` is never called |
+| `auto` mode | With `mode=auto` and a non-vision provider, the tier stays inert; swapping in a vision-capable provider turns it on with no other change |
 | `critiqueImage` parsing | Malformed model output becomes a `ValidationResult` failure, not a throw |
 | Route validation | Oversized and malformed uploads are rejected, matching `/api/agent/llm`'s discipline |
 | `check-client-bundle` | Gains `apps/studio` as a target; browser bundle carries no provider SDK and no credentials |
@@ -314,8 +365,10 @@ keeps the gate identical when the Anthropic adapter is the one in use.
 - [ ] Correction rounds are budget-capped; the loop always terminates.
 - [ ] With `SKETCHMIND_VISION_MODE=off`, the full pipeline runs end to end with tier 1 only — no
       image is ever encoded, sent or logged. Asserted by a test.
-- [ ] Setting `SKETCHMIND_VISION_MODE=on` against a vision-capable provider and raster renderer
-      enables tier 2 with no code change.
+- [ ] Setting `SKETCHMIND_VISION_MODE` to `on` or `auto` against any vision-capable provider and a
+      raster renderer enables tier 2 with no code change.
+- [ ] The vision provider is resolvable independently of the session provider, and no code outside
+      `apps/api/src/provider.ts` names a provider id or a vendor.
 - [ ] Critique findings appear in the trace panel tagged with their tier.
 - [ ] The client agent runs an `agent-core` loop with its own budget and trace, and the browser
       bundle contains no provider SDK or credentials.
