@@ -12,7 +12,7 @@
  * Nothing above the provider layer imports this package. The composition root
  * calls `registerAzureOpenAI` and everything else takes an `LLMProvider`.
  */
-import type { ProviderEnv, ProviderRegistry } from "@sketchmind/llm-provider";
+import type { ProviderEnv, ProviderOptions, ProviderRegistry } from "@sketchmind/llm-provider";
 import { configFromEnv } from "./internal/config.js";
 import { AzureOpenAIProvider } from "./provider.js";
 
@@ -31,8 +31,11 @@ export {
   type AzureOpenAIConfig,
 } from "./internal/config.js";
 
-export function createAzureOpenAIProvider(env: ProviderEnv): AzureOpenAIProvider {
-  return new AzureOpenAIProvider({ config: configFromEnv(env) });
+export function createAzureOpenAIProvider(
+  env: ProviderEnv,
+  options?: ProviderOptions,
+): AzureOpenAIProvider {
+  return new AzureOpenAIProvider({ config: configFromEnv(env, options) });
 }
 
 /** Call this at the composition root to make `azure-openai` selectable. */

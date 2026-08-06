@@ -96,12 +96,31 @@ describe("capabilitiesFromEnv", () => {
     });
   });
 
-  it("keeps vision off unless a vision deployment is named", () => {
+  it("keeps vision off unless the constructed deployment IS the vision deployment", () => {
     // The standing directive: the agent works on JSON only. Phase 10b is opt-in
-    // via one variable, with no code change.
+    // via one variable, with no code change. The flag must also be honest per
+    // instance (Phase 10 Task 5): a text-role deployment must never claim vision
+    // just because some other deployment in the same env is vision-capable.
     expect(capabilitiesFromEnv({}).vision).toBe(false);
     expect(capabilitiesFromEnv({ AZURE_OPENAI_VISION_DEPLOYMENT: "  " }).vision).toBe(false);
-    expect(capabilitiesFromEnv({ AZURE_OPENAI_VISION_DEPLOYMENT: "gpt-vision" }).vision).toBe(true);
+    expect(
+      capabilitiesFromEnv({
+        AZURE_OPENAI_DEPLOYMENT: "gpt-vision",
+        AZURE_OPENAI_VISION_DEPLOYMENT: "gpt-vision",
+      }).vision,
+    ).toBe(true);
+    expect(
+      capabilitiesFromEnv({
+        AZURE_OPENAI_DEPLOYMENT: "gpt-4o-text",
+        AZURE_OPENAI_VISION_DEPLOYMENT: "gpt-vision",
+      }).vision,
+    ).toBe(false);
+    expect(
+      capabilitiesFromEnv(
+        { AZURE_OPENAI_DEPLOYMENT: "gpt-4o-text", AZURE_OPENAI_VISION_DEPLOYMENT: "gpt-vision" },
+        { model: "gpt-vision" },
+      ).vision,
+    ).toBe(true);
   });
 
   it("lets a probe result be written back as configuration", () => {

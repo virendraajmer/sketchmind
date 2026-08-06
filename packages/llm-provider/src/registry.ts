@@ -19,7 +19,23 @@ const PACKAGE = "@sketchmind/llm-provider";
 /** Adapters receive the raw environment rather than reading `process.env`. */
 export type ProviderEnv = Readonly<Record<string, string | undefined>>;
 
-export type ProviderFactory = (env: ProviderEnv) => LLMProvider;
+/**
+ * Per-role construction options.
+ *
+ * Phase 10 resolves two model *roles* -- `text` and `vision` -- which may name
+ * different providers, different models, or both. A role selecting a different
+ * deployment on the *same* adapter is the case env alone cannot express, because
+ * each adapter reads exactly one model variable. This override is the whole
+ * mechanism, and it stays here rather than in the composition root so that
+ * `AZURE_OPENAI_DEPLOYMENT` and `ANTHROPIC_MODEL` remain names only their own
+ * packages know.
+ */
+export interface ProviderOptions {
+  /** Overrides the model or deployment the adapter would take from env. */
+  readonly model?: string;
+}
+
+export type ProviderFactory = (env: ProviderEnv, options?: ProviderOptions) => LLMProvider;
 
 export class ProviderRegistry {
   private readonly factories = new Map<string, ProviderFactory>();
@@ -37,7 +53,7 @@ export class ProviderRegistry {
     return [...this.factories.keys()].sort();
   }
 
-  create(id: string, env: ProviderEnv): LLMProvider {
+  create(id: string, env: ProviderEnv, options?: ProviderOptions): LLMProvider {
     const factory = this.factories.get(id);
     if (!factory) {
       throw providerError(
@@ -47,7 +63,10 @@ export class ProviderRegistry {
         PACKAGE,
       );
     }
-    return factory(env);
+    // Called with exactly one argument when no override is given, not `(env,
+    // undefined)` -- so a factory (or a test spy on one) that inspects `arguments`
+    // sees today's call shape unchanged when nobody asks for the new behaviour.
+    return options === undefined ? factory(env) : factory(env, options);
   }
 }
 

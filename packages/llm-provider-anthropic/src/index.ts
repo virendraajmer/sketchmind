@@ -12,7 +12,7 @@
  * Nothing above the provider layer imports this package. The composition root
  * calls `registerAnthropic`; everything else takes an `LLMProvider`.
  */
-import type { ProviderEnv, ProviderRegistry } from "@sketchmind/llm-provider";
+import type { ProviderEnv, ProviderOptions, ProviderRegistry } from "@sketchmind/llm-provider";
 import { configFromEnv } from "./internal/config.js";
 import { AnthropicProvider } from "./provider.js";
 
@@ -29,8 +29,11 @@ export {
   type AnthropicConfig,
 } from "./internal/config.js";
 
-export function createAnthropicProvider(env: ProviderEnv): AnthropicProvider {
-  return new AnthropicProvider({ config: configFromEnv(env) });
+export function createAnthropicProvider(
+  env: ProviderEnv,
+  options?: ProviderOptions,
+): AnthropicProvider {
+  return new AnthropicProvider({ config: configFromEnv(env, options) });
 }
 
 /** Call this at the composition root to make `anthropic` selectable. */

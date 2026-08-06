@@ -13,6 +13,7 @@ import {
   providerError,
   type LLMCapabilities,
   type ProviderEnv,
+  type ProviderOptions,
 } from "@sketchmind/llm-provider";
 
 export const PACKAGE = "@sketchmind/llm-provider-anthropic";
@@ -63,7 +64,7 @@ export function capabilitiesFromEnv(env: ProviderEnv): LLMCapabilities {
   };
 }
 
-export function configFromEnv(env: ProviderEnv): AnthropicConfig {
+export function configFromEnv(env: ProviderEnv, options?: ProviderOptions): AnthropicConfig {
   const apiKey = env["ANTHROPIC_API_KEY"]?.trim() ?? "";
   if (apiKey === "") {
     throw providerError(
@@ -88,7 +89,7 @@ export function configFromEnv(env: ProviderEnv): AnthropicConfig {
 
   return {
     apiKey,
-    model: env["ANTHROPIC_MODEL"]?.trim() || DEFAULT_MODEL,
+    model: options?.model?.trim() || env["ANTHROPIC_MODEL"]?.trim() || DEFAULT_MODEL,
     ...(baseURL === "" ? {} : { baseURL }),
     capabilities: capabilitiesFromEnv(env),
     timeoutMs: readNumber(env["ANTHROPIC_TIMEOUT_MS"], 120_000),

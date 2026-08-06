@@ -11,6 +11,7 @@ import {
   providerError,
   type LLMCapabilities,
   type ProviderEnv,
+  type ProviderOptions,
 } from "@sketchmind/llm-provider";
 
 export const PACKAGE = "@sketchmind/llm-provider-azure-openai";
@@ -70,19 +71,26 @@ function readNumber(value: string | undefined, fallback: number): number {
  *
  * `vision` is false by default: the agent works on JSON only until Phase 10b is
  * deliberately switched on.
+ *
+ * A deployment is vision-capable when it *is* the vision deployment. A role
+ * that selected it explicitly (via `options.model`) gets a truthful flag; the
+ * text role, pointed at a text deployment, still reports false even though
+ * `AZURE_OPENAI_VISION_DEPLOYMENT` is set for the vision role elsewhere.
  */
-export function capabilitiesFromEnv(env: ProviderEnv): LLMCapabilities {
+export function capabilitiesFromEnv(env: ProviderEnv, options?: ProviderOptions): LLMCapabilities {
+  const visionDeployment = env["AZURE_OPENAI_VISION_DEPLOYMENT"]?.trim() ?? "";
+  const effectiveDeployment = options?.model?.trim() || env["AZURE_OPENAI_DEPLOYMENT"]?.trim() || "";
   return {
     structuredOutput: readBoolean(env["AZURE_OPENAI_STRUCTURED_OUTPUT"], true),
     toolCalling: readBoolean(env["AZURE_OPENAI_TOOL_CALLING"], true),
     parallelToolCalls: readBoolean(env["AZURE_OPENAI_PARALLEL_TOOL_CALLS"], true),
     streaming: readBoolean(env["AZURE_OPENAI_STREAMING"], true),
-    vision: (env["AZURE_OPENAI_VISION_DEPLOYMENT"]?.trim() ?? "") !== "",
+    vision: visionDeployment !== "" && effectiveDeployment === visionDeployment,
     maxContextTokens: readNumber(env["AZURE_OPENAI_MAX_CONTEXT_TOKENS"], 128_000),
   };
 }
 
-export function configFromEnv(env: ProviderEnv): AzureOpenAIConfig {
+export function configFromEnv(env: ProviderEnv, options?: ProviderOptions): AzureOpenAIConfig {
   const rawBaseUrl = env["AZURE_OPENAI_BASE_URL"]?.trim() ?? "";
   if (rawBaseUrl === "") {
     misconfigured(
@@ -98,7 +106,7 @@ export function configFromEnv(env: ProviderEnv): AzureOpenAIConfig {
     misconfigured(`AZURE_OPENAI_BASE_URL is not a valid URL: ${rawBaseUrl}`);
   }
 
-  const deployment = env["AZURE_OPENAI_DEPLOYMENT"]?.trim() ?? "";
+  const deployment = options?.model?.trim() || env["AZURE_OPENAI_DEPLOYMENT"]?.trim() || "";
   if (deployment === "") {
     misconfigured("AZURE_OPENAI_DEPLOYMENT is required -- the name you gave the deployment.");
   }
@@ -124,7 +132,7 @@ export function configFromEnv(env: ProviderEnv): AzureOpenAIConfig {
     baseURL,
     deployment,
     auth: useEntra ? { kind: "entra" } : { kind: "api-key", apiKey },
-    capabilities: capabilitiesFromEnv(env),
+    capabilities: capabilitiesFromEnv(env, options),
     timeoutMs: readNumber(env["AZURE_OPENAI_TIMEOUT_MS"], 120_000),
   };
 }
