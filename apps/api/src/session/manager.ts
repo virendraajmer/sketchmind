@@ -17,6 +17,7 @@
  * second flag that can disagree with it.
  */
 import type { RuntimeEvent } from "@sketchmind/session-protocol";
+import type { CritiqueFinding } from "@sketchmind/shared-types";
 
 export type SessionListener = (event: RuntimeEvent) => void;
 
@@ -28,18 +29,33 @@ export interface SessionRecord {
   readonly listeners: Set<SessionListener>;
   /** Set once a terminal event has been emitted. No more will follow. */
   finished: boolean;
+  /** The user's original words, needed to judge the image against the ask. */
+  request: string;
+  /** Ids and counts for the critique prompt. Never coordinates. */
+  layoutSummary: string;
+  /** Critique rounds spent. Capped by `config.vision.maxRounds`. */
+  visionRounds: number;
+  /** Repair turns spent. Capped by `config.repair.maxRounds`. */
+  repairRounds: number;
+  /** Last round's findings, so an unchanged verdict does not re-trigger repair. */
+  lastFindings: CritiqueFinding[];
 }
 
 export class SessionManager {
   private readonly sessions = new Map<string, SessionRecord>();
 
-  create(sessionId: string): SessionRecord {
+  create(sessionId: string, request = ""): SessionRecord {
     const record: SessionRecord = {
       sessionId,
       controller: new AbortController(),
       events: [],
       listeners: new Set(),
       finished: false,
+      request,
+      layoutSummary: "",
+      visionRounds: 0,
+      repairRounds: 0,
+      lastFindings: [],
     };
     this.sessions.set(sessionId, record);
     return record;

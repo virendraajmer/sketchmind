@@ -15,6 +15,7 @@
     "@fastify/cors": "^10.0.1",
     "@sketchmind/agent-core": "workspace:*",
     "@sketchmind/agent-memory": "workspace:*",
+    "@sketchmind/agent-vision": "workspace:*",
     "@sketchmind/agent-tools-geometry": "workspace:*",
     "@sketchmind/agent-tools-reasoning": "workspace:*",
     "@sketchmind/llm-provider": "workspace:*",

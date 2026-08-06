@@ -5,9 +5,10 @@ import type { LLMProvider } from "@sketchmind/llm-provider";
 import { registerHealth } from "./routes/health.js";
 import { registerLlmProxy } from "./routes/llm.js";
 import { registerSessions } from "./routes/sessions.js";
+import { registerVisionRoute } from "./routes/vision.js";
 import { SessionManager } from "./session/manager.js";
 import { loadConfig, type ApiConfig } from "./config.js";
-import { resolveProvider } from "./provider.js";
+import { resolveProvider, resolveRoleProvider } from "./provider.js";
 
 /**
  * The composition root.
@@ -49,6 +50,19 @@ export async function buildServer(options: ServerOptions = {}): Promise<SketchMi
   registerHealth(app);
   registerSessions(app, { provider, store, config, sessions });
   registerLlmProxy(app, provider);
+  registerVisionRoute(app, {
+    provider: resolveRoleProvider("vision"),
+    config,
+    sessions,
+  });
+
+  // A deployment that depends on critique should learn at boot, not mid-session.
+  if (config.vision.mode === "on" && !resolveRoleProvider("vision")) {
+    app.log.warn(
+      "SKETCHMIND_VISION_MODE=on but no vision-capable provider resolved. " +
+        "Set SKETCHMIND_VISION_PROVIDER / SKETCHMIND_VISION_MODEL, or use mode=auto.",
+    );
+  }
 
   // A process exiting with sessions still running would leave the agent's
   // in-flight provider call to be reaped by a timeout rather than cancelled.

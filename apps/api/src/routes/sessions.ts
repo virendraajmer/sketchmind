@@ -36,7 +36,7 @@ export function registerSessions(app: FastifyInstance, options: SessionRoutesOpt
     if (command.value.type !== "StartSession") return reply.code(400).send({ errors: [] });
 
     const sessionId = randomUUID();
-    const record = sessions.create(sessionId);
+    const record = sessions.create(sessionId, command.value.userInput);
 
     void runSession({
       sessionId,
