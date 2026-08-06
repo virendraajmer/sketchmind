@@ -20,7 +20,9 @@ See `src/index.ts` for complete exports. The four entry points:
 
 - **`createVisionTools(options)`** — Expose critique to the server agent. Returns `ToolDefinition[]` for `critique_diagram`. Options include accessors for current AST/layout/strokes and geometric check configuration.
 
-- **`runVisionAgent(options)`** — Client-side vision agent. Input: `{ sessionId, request, provider, capture, critique, report, visionEnabled, signal, maxSteps?, maxTokens?, timeoutMs?, onStep? }`. When `visionEnabled` is false, returns immediately without building a tool registry or capturing anything. Otherwise runs a bounded `agent-core` loop (`capture_canvas` → `critique_canvas` → `report_findings`) and returns `{ reported, rounds, stopReason }`.
+- **`runVisionAgent(options)`** — Client-side vision agent. Input: `{ sessionId, request, provider, capture, critique, report, visionEnabled, signal, maxRounds?, maxSteps?, maxTokens?, timeoutMs?, onStep? }`. When `visionEnabled` is false, returns immediately without building a tool registry or capturing anything. Otherwise runs a bounded `agent-core` loop (`capture_canvas` → `critique_canvas` → `report_findings`) and returns `{ reported, rounds, stopReason }`.
+
+  **Single-shot, today.** One invocation is one capture/critique/report cycle — there is no outer round loop, and the returned `rounds` is always `1` when the agent ran. `maxRounds` is accepted on the options type but **not yet acted on**. The design spec's second critique round, where tier 2 wakes again after a repair redraw settles, is a known follow-up and is not implemented behaviour; anything that needs a second look must invoke `runVisionAgent` again itself. (The server-side round caps are real and enforced elsewhere: `SKETCHMIND_VISION_MAX_ROUNDS` on the critique route, `SKETCHMIND_REPAIR_MAX_ROUNDS` in the repair turn.)
 
 ## Dependency rules
 

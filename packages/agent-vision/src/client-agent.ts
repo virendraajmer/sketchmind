@@ -40,6 +40,12 @@ export interface RunVisionAgentOptions {
   /** False builds no capture or critique tool at all. */
   readonly visionEnabled: boolean;
   readonly signal: AbortSignal;
+  /**
+   * Accepted but **not yet acted on**: this function is single-shot -- one
+   * capture/critique/report cycle per invocation, and `rounds` in the result is
+   * always 1. The design spec's second round, where tier 2 wakes again after a
+   * repair redraw settles, is a tracked follow-up, not implemented behaviour.
+   */
   readonly maxRounds?: number;
   readonly maxSteps?: number;
   readonly maxTokens?: number;
@@ -91,5 +97,8 @@ export async function runVisionAgent(
     ...(options.onStep ? { onStep: options.onStep } : {}),
   });
 
+  // Literal 1: one invocation is one round. See `maxRounds` above -- there is no
+  // outer loop yet, and reporting a count this function did not actually iterate
+  // would be the kind of number a reader trusts.
   return { reported, rounds: 1, stopReason: result.stopReason };
 }
