@@ -44,6 +44,7 @@ import type { ApiConfig } from "../config.js";
 import type { SessionRecord } from "./manager.js";
 import { sessionSystemPrompt } from "./prompt.js";
 import { runRepair } from "./repair.js";
+import { stepEvent } from "./trace.js";
 
 const PACKAGE = "@sketchmind/api";
 
@@ -53,9 +54,14 @@ export interface RunSessionOptions {
   readonly provider: LLMProvider;
   readonly store: MemoryStore;
   readonly config: ApiConfig;
-  readonly signal: AbortSignal;
   readonly emit: (event: RuntimeEvent) => void;
-  /** Where the automatic critique pass and a later repair turn keep state. */
+  /**
+   * Where the automatic critique pass and a later repair turn keep state.
+   * Also the session's one cancellation signal (`record.controller.signal`) --
+   * there is deliberately no separate `signal` field here, because two
+   * independently-supplied signals are two things that can disagree about
+   * whether a repair turn should still be running.
+   */
   readonly record: SessionRecord;
   /** Injected so tests advance playback without waiting in real time. */
   readonly sleep?: (ms: number) => Promise<void>;
@@ -65,7 +71,8 @@ export interface RunSessionOptions {
 const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 export async function runSession(options: RunSessionOptions): Promise<void> {
-  const { sessionId, userInput, provider, store, config, signal } = options;
+  const { sessionId, userInput, provider, store, config, record } = options;
+  const signal = record.controller.signal;
   const sleep = options.sleep ?? wait;
   const now = options.now ?? (() => new Date().toISOString());
 
@@ -91,23 +98,18 @@ export async function runSession(options: RunSessionOptions): Promise<void> {
     ...createMemoryTools({ store, embedder }),
   ]);
 
+  // Handed to a repair turn -- the automatic one below, and any later one
+  // driven by `POST /api/sessions/:id/findings`, which runs long after this
+  // function has returned and only has `record` to reach these by.
+  record.registry = registry;
+  record.getAst = () => reasoning.ast;
+  record.getStrokes = () => geometry.strokeAST;
+
   // The AST is announced the moment it exists, not when the run ends: the
   // inspector should fill in while layout is still being solved.
   let announcedAst = false;
   const onStep = (step: AgentTraceStep): void => {
-    emit({
-      type: "AgentStep",
-      stepId: step.stepId,
-      locus: step.locus,
-      ...(step.thought === undefined ? {} : { thought: step.thought }),
-      ...(step.toolName === undefined ? {} : { toolName: step.toolName }),
-      ...(step.toolArgs === undefined ? {} : { toolArgs: step.toolArgs }),
-      ...(step.toolResult === undefined ? {} : { toolResult: step.toolResult }),
-      ...(step.error === undefined ? {} : { error: step.error }),
-      tokensIn: step.tokensIn,
-      tokensOut: step.tokensOut,
-      durationMs: step.durationMs,
-    });
+    emit(stepEvent(step));
 
     if (step.toolName) {
       memory.note(step.error ? "failed" : "planned", `${step.toolName}: ${step.error?.message ?? "ok"}`);
@@ -131,6 +133,11 @@ export async function runSession(options: RunSessionOptions): Promise<void> {
     onStep,
   });
 
+  // A repair turn is a follow-up on this conversation, not a stranger to it --
+  // set regardless of how the run ended, since even a failed or cancelled run
+  // may still be worth a repair attempt started later from `/findings`.
+  record.history = [...result.messages];
+
   if (signal.aborted) {
     emit({ type: "SessionCancelled", reason: "cancelled before drawing began" });
     return;
@@ -150,15 +157,20 @@ export async function runSession(options: RunSessionOptions): Promise<void> {
     return;
   }
 
+  // Ids and counts only, never coordinates -- read by the image tier's prompt
+  // (`routes/vision.ts`) regardless of whether the geometric tier is on, so
+  // disabling the free tier must not silently starve the paid one of context.
+  const layout = geometry.layout;
+  if (reasoning.ast && layout) {
+    record.layoutSummary =
+      `${layout.nodes.length} objects (${layout.nodes.map((n) => n.objectId).join(", ")}), ` +
+      `${layout.connectors.length} connectors, ${layout.labels.length} labels`;
+  }
+
   // The free tier runs on every diagram before a single stroke is drawn. This
   // is the pass that makes "the agent checks its own work" true even with the
   // image tier switched off, and it costs nothing to be sure of.
-  const layout = geometry.layout;
   if (config.vision.geometric && reasoning.ast && layout) {
-    options.record.layoutSummary =
-      `${layout.nodes.length} objects (${layout.nodes.map((n) => n.objectId).join(", ")}), ` +
-      `${layout.connectors.length} connectors, ${layout.labels.length} labels`;
-
     const findings = critiqueGeometry({ ast: reasoning.ast, layout, strokes });
     if (findings.length > 0) {
       await runRepair({
@@ -167,7 +179,9 @@ export async function runSession(options: RunSessionOptions): Promise<void> {
         provider,
         registry,
         config,
-        record: options.record,
+        record,
+        getAst: () => reasoning.ast,
+        getStrokes: () => geometry.strokeAST,
         emit: options.emit,
       });
     }
@@ -176,10 +190,7 @@ export async function runSession(options: RunSessionOptions): Promise<void> {
   // Repair may have replaced the plan; draw whatever the workspace now holds.
   const finalStrokes = geometry.strokeAST ?? strokes;
 
-  // Handed to the client agent and to a later repair turn.
-  options.record.registry = registry;
-
-  await play({ ...options, strokes: finalStrokes, sleep, now });
+  await play({ ...options, signal, strokes: finalStrokes, sleep, now });
 }
 
 interface PlayOptions {

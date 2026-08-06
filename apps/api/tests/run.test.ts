@@ -3,14 +3,18 @@
  *
  * These go at `runSession` rather than at a route because the interesting
  * behaviour is timing -- what is emitted, in what order, and what stops when the
- * signal aborts. Injected `sleep` and `signal` make that assertable instead of
- * racy.
+ * signal aborts. Injected `sleep` makes that assertable instead of racy.
+ *
+ * There is deliberately no separate `signal` passed to `runSession` any more --
+ * `record.controller.signal` is the one cancellation signal, so a cancellation
+ * test creates the `SessionRecord` first and aborts *that* controller, rather
+ * than maintaining a second one that could disagree with it.
  */
 import { describe, expect, it } from "vitest";
 import { InMemoryStore } from "@sketchmind/agent-memory";
 import type { RuntimeEvent } from "@sketchmind/session-protocol";
 import { runSession } from "../src/session/run.js";
-import { SessionManager } from "../src/session/manager.js";
+import { SessionManager, type SessionRecord } from "../src/session/manager.js";
 import { DRAWS_A_PULLEY, DRAWS_NOTHING, pulleyProvider, testConfig } from "./support.js";
 
 interface Recorded {
@@ -18,21 +22,24 @@ interface Recorded {
   readonly types: string[];
 }
 
-async function record(options: {
-  toolCalls?: readonly (readonly (typeof DRAWS_A_PULLEY)[number][number][])[];
-  signal?: AbortSignal;
-  sleep?: (ms: number) => Promise<void>;
-} = {}): Promise<Recorded> {
+function createSession(request = "Draw a movable pulley"): SessionRecord {
+  return new SessionManager().create("s1", request);
+}
+
+async function run(
+  record: SessionRecord,
+  options: {
+    toolCalls?: readonly (readonly (typeof DRAWS_A_PULLEY)[number][number][])[];
+    sleep?: (ms: number) => Promise<void>;
+  } = {},
+): Promise<Recorded> {
   const events: RuntimeEvent[] = [];
-  const sessions = new SessionManager();
-  const record = sessions.create("s1", "Draw a movable pulley");
   await runSession({
-    sessionId: "s1",
-    userInput: "Draw a movable pulley",
+    sessionId: record.sessionId,
+    userInput: record.request,
     provider: pulleyProvider(options.toolCalls ?? DRAWS_A_PULLEY),
     store: new InMemoryStore(),
     config: testConfig(),
-    signal: options.signal ?? new AbortController().signal,
     emit: (event) => events.push(event),
     sleep: options.sleep ?? (async () => {}),
     record,
@@ -42,7 +49,7 @@ async function record(options: {
 
 describe("a session that draws", () => {
   it("starts, reasons, draws, and completes", async () => {
-    const { types } = await record();
+    const { types } = await run(createSession());
     expect(types[0]).toBe("SessionStarted");
     expect(types.at(-1)).toBe("SessionCompleted");
     expect(types).toContain("AgentStep");
@@ -50,7 +57,7 @@ describe("a session that draws", () => {
   });
 
   it("announces the diagram before any geometry has been solved", async () => {
-    const { types } = await record();
+    const { types } = await run(createSession());
     const ast = types.indexOf("DiagramASTReady");
     const firstFrame = types.indexOf("FrameUpdate");
     expect(ast).toBeGreaterThan(-1);
@@ -58,12 +65,12 @@ describe("a session that draws", () => {
   });
 
   it("announces the diagram exactly once, however many steps follow", async () => {
-    const { types } = await record();
+    const { types } = await run(createSession());
     expect(types.filter((type) => type === "DiagramASTReady")).toHaveLength(1);
   });
 
   it("carries a valid AST, which is what the inspector renders", async () => {
-    const { events } = await record();
+    const { events } = await run(createSession());
     const ready = events.find((event) => event.type === "DiagramASTReady");
     expect(ready).toBeDefined();
     if (ready?.type !== "DiagramASTReady") throw new Error("wrong variant");
@@ -71,7 +78,7 @@ describe("a session that draws", () => {
   });
 
   it("reports each tool call with its cost, which is the trace panel", async () => {
-    const { events } = await record();
+    const { events } = await run(createSession());
     const steps = events.filter((event) => event.type === "AgentStep");
     const named = steps.filter((step) => step.type === "AgentStep" && step.toolName);
     expect(named.length).toBeGreaterThanOrEqual(4);
@@ -84,24 +91,55 @@ describe("a session that draws", () => {
   });
 
   it("forwards the runtime's own stroke events untouched", async () => {
-    const { types } = await record();
+    const { types } = await run(createSession());
     expect(types).toContain("StrokeStarted");
     expect(types).toContain("StrokeCompleted");
   });
 
   it("draws every stroke the planner produced", async () => {
-    const { events } = await record();
+    const { events } = await run(createSession());
     const frames = events.filter((event) => event.type === "FrameUpdate");
     const last = frames[frames.length - 1];
     if (last?.type !== "FrameUpdate") throw new Error("wrong variant");
     expect(last.frame.pending).toBe(0);
     expect(last.frame.completed.length).toBeGreaterThan(0);
   });
+
+  it("leaves the record's registry and accessors set for a later repair turn", async () => {
+    const record = createSession();
+    await run(record);
+    expect(record.registry).toBeDefined();
+    expect(record.getAst?.()).toBeDefined();
+    expect(record.getStrokes?.()).toBeDefined();
+  });
+
+  it("builds a layout summary of ids and counts, never coordinates", async () => {
+    const record = createSession();
+    await run(record);
+    expect(record.layoutSummary).toContain("objects");
+    expect(record.layoutSummary).not.toMatch(/-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?/);
+  });
+
+  it("still builds the layout summary when the geometric critique tier is off", async () => {
+    const record = createSession();
+    const events: RuntimeEvent[] = [];
+    await runSession({
+      sessionId: record.sessionId,
+      userInput: record.request,
+      provider: pulleyProvider(DRAWS_A_PULLEY),
+      store: new InMemoryStore(),
+      config: testConfig({ vision: { ...testConfig().vision, geometric: false } }),
+      emit: (event) => events.push(event),
+      sleep: async () => {},
+      record,
+    });
+    expect(record.layoutSummary).toContain("objects");
+  });
 });
 
 describe("a session that cannot draw", () => {
   it("says why rather than leaving the board blank", async () => {
-    const { events, types } = await record({ toolCalls: DRAWS_NOTHING });
+    const { events, types } = await run(createSession(), { toolCalls: DRAWS_NOTHING });
     expect(types).toContain("SessionFailed");
     expect(types).not.toContain("FrameUpdate");
 
@@ -114,13 +152,12 @@ describe("a session that cannot draw", () => {
 
 describe("cancellation", () => {
   it("stops mid-drawing and ends the session as cancelled", async () => {
-    const controller = new AbortController();
+    const record = createSession();
     let ticks = 0;
-    const { types } = await record({
-      signal: controller.signal,
+    const { types } = await run(record, {
       sleep: async () => {
         ticks += 1;
-        if (ticks === 2) controller.abort();
+        if (ticks === 2) record.controller.abort();
       },
     });
 
@@ -130,22 +167,21 @@ describe("cancellation", () => {
   });
 
   it("stops before drawing begins when cancelled during reasoning", async () => {
-    const controller = new AbortController();
-    controller.abort();
-    const { types } = await record({ signal: controller.signal });
+    const record = createSession();
+    record.controller.abort();
+    const { types } = await run(record);
 
     expect(types.at(-1)).toBe("SessionCancelled");
     expect(types).not.toContain("FrameUpdate");
   });
 
   it("emits exactly one terminal event", async () => {
-    const controller = new AbortController();
+    const record = createSession();
     let ticks = 0;
-    const { types } = await record({
-      signal: controller.signal,
+    const { types } = await run(record, {
       sleep: async () => {
         ticks += 1;
-        if (ticks === 2) controller.abort();
+        if (ticks === 2) record.controller.abort();
       },
     });
 

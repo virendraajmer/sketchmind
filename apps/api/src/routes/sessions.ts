@@ -47,7 +47,6 @@ export function registerSessions(app: FastifyInstance, options: SessionRoutesOpt
       provider,
       store,
       config,
-      signal: record.controller.signal,
       emit: (event) => sessions.emit(sessionId, event),
       record,
     }).catch((cause: unknown) => {
@@ -114,7 +113,11 @@ export function registerSessions(app: FastifyInstance, options: SessionRoutesOpt
     "/api/sessions/:id/findings",
     async (request, reply) => {
       const record = sessions.get(request.params.id);
-      if (!record || !record.registry) return reply.code(404).send({ reason: "No such session." });
+      // `registry`, `getAst` and `getStrokes` are set together in `runSession`;
+      // testing one is enough, but the other two are asserted for the reader.
+      if (!record || !record.registry || !record.getAst || !record.getStrokes) {
+        return reply.code(404).send({ reason: "No such session." });
+      }
 
       const parsed = z
         .object({ findings: z.array(CritiqueFindingSchema).max(50) })
@@ -132,6 +135,8 @@ export function registerSessions(app: FastifyInstance, options: SessionRoutesOpt
         registry: record.registry,
         config,
         record,
+        getAst: record.getAst,
+        getStrokes: record.getStrokes,
         emit: (event) => sessions.emit(record.sessionId, event),
       }).catch((cause: unknown) => {
         app.log.error({ err: cause, sessionId: record.sessionId }, "repair turn crashed");

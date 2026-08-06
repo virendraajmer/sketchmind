@@ -17,8 +17,9 @@
  * second flag that can disagree with it.
  */
 import type { ToolRegistry } from "@sketchmind/agent-core";
+import type { Message } from "@sketchmind/llm-provider";
 import type { RuntimeEvent } from "@sketchmind/session-protocol";
-import type { CritiqueFinding } from "@sketchmind/shared-types";
+import type { CritiqueFinding, DiagramAST, StrokeAST } from "@sketchmind/shared-types";
 
 export type SessionListener = (event: RuntimeEvent) => void;
 
@@ -42,6 +43,19 @@ export interface SessionRecord {
   lastFindings: CritiqueFinding[];
   /** Set once the run's registry exists, so a later repair turn can reuse it. */
   registry?: ToolRegistry;
+  /**
+   * Paired with `registry`, set at the same time: how a repair turn reads the
+   * live AST and stroke plan, whether it was triggered automatically or from
+   * `POST /findings` long after `runSession` itself has returned.
+   */
+  getAst?: () => DiagramAST | undefined;
+  getStrokes?: () => StrokeAST | undefined;
+  /**
+   * The conversation so far. A repair turn passes this as `history` so it is a
+   * follow-up on the same run instead of a stranger with no memory of the
+   * original request or of what it already tried.
+   */
+  history: Message[];
 }
 
 export class SessionManager {
@@ -59,6 +73,7 @@ export class SessionManager {
       visionRounds: 0,
       repairRounds: 0,
       lastFindings: [],
+      history: [],
     };
     this.sessions.set(sessionId, record);
     return record;
