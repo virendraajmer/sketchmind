@@ -202,7 +202,7 @@ agent never sees an image in its own context, so `vision: false` is truthful.
 
 | Tool | Effect |
 |---|---|
-| `capture_canvas` | Calls the supplied capture closure (`RendererAdapter.captureImage()`), stores the PNG in a client-side `VisionWorkspace`, returns `{ width, height, byteLength }`. The bytes never enter the message history. |
+| `capture_canvas` | Awaits the supplied capture closure, which delegates to the capture worker (below), stores the PNG in a client-side `VisionWorkspace`, and returns `{ width, height, byteLength }`. The bytes never enter the message history. |
 | `critique_canvas` | POSTs the held image to `/api/agent/vision-critique`; returns the findings as JSON text. |
 | `report_findings` | POSTs selected findings to `/api/sessions/:id/findings`. |
 
@@ -218,6 +218,53 @@ pipe, and it is why `report_findings` takes a subset rather than forwarding ever
 - Hard cap: **2 critique rounds per session** (`SKETCHMIND_VISION_MAX_ROUNDS`).
 - A round whose findings are identical to the previous round's is dropped without reporting.
 - Budget exhaustion ends the loop and is reported as a trace step, not an error.
+
+## Concurrency and performance
+
+### One agent per locus; everything else is a worker
+
+The client and server agents run fully asynchronously — they share no memory, communicate only
+over HTTP, and neither blocks the other. Beyond that, this phase adds **no further agents**.
+
+That is a deliberate performance decision, not a scope cut. Frontend cost is bounded by
+main-thread work per frame — canvas draws, layout, image encode, GC. An agent is a model call:
+network-bound, hundreds of milliseconds at best, and it performs no rendering work. Splitting one
+client agent into several would multiply round trips and tokens while every one of them still
+competed for the same single main thread. Decomposition earns its keep here as *deterministic
+modules*, several of which run genuinely in parallel; it does not earn its keep as extra LLM loops.
+
+This also keeps AD-4 intact. The vision agent is a second agent identity only because it holds no
+diagram state — it reads pixels and reports findings. Any future client agent that *acts* on the
+diagram reintroduces exactly the "two brains disagreeing about diagram state" problem AD-4 exists
+to prevent, and would be a deliberate reversal of that decision rather than an extension of this
+one.
+
+### Client units (`apps/studio`)
+
+| Unit | Kind | Responsibility |
+|---|---|---|
+| Vision agent | `agent-core` loop | Judgement only: is a finding real, is it a repeat, is it worth reporting. Wakes at most twice per session |
+| **Capture worker** | Deterministic, Web Worker | `OffscreenCanvas` → PNG encode → base64, entirely off the main thread |
+| Frame applier | Deterministic, main thread | `requestAnimationFrame`-batched; coalesces bursts of SSE `FrameUpdate` events into one paint |
+| Transport | Deterministic | SSE reader plus a POST queue; never blocks rendering |
+
+The capture worker is the concrete performance win. Encoding a full-board PNG on the main thread
+costs tens of milliseconds and drops frames mid-playback; `OffscreenCanvas` removes that from the
+render path entirely. `RendererAdapter.captureImage()` stays synchronous and unchanged — the worker
+wraps it, and the client tool's capture closure is therefore `async`.
+
+### Server units (`apps/api`)
+
+| Unit | Kind | Responsibility |
+|---|---|---|
+| Session agent | `agent-core` loop | The single agent identity of AD-4 |
+| Geometric critique | Pure function | Seven checks, no model, ~ms |
+| Image critique | One model call | On the critique route, **concurrent with playback** — it never gates a frame |
+| Repair turn | Bounded `runAgent` | Same registry, capped rounds |
+
+Parallel *reasoning* agents — for example intent analysis and memory recall as concurrent
+sub-agents rather than sequential tool calls — are a real latency win, but they are server-side and
+belong with Phase 12's hardening work, measured against real traces rather than assumed.
 
 ## Repair
 
@@ -424,6 +471,8 @@ provider id — the gate would read identically if Azure were removed from the r
 | `critiqueImage` parsing | Malformed model output becomes a `ValidationResult` failure, not a throw |
 | Route validation | Oversized and malformed uploads are rejected, matching `/api/agent/llm`'s discipline |
 | `check-client-bundle` | Gains `apps/studio` as a target; browser bundle carries no provider SDK and no credentials |
+| Capture worker | Encodes an `OffscreenCanvas` to PNG+base64 off the main thread and returns bytes identical to the synchronous path |
+| Playback not gated | A slow or failing critique call leaves frame delivery unaffected — asserted with a stalled fake critique endpoint |
 
 `critiqueImage` is tested against `FakeProvider` only. No test calls a live endpoint.
 
@@ -445,6 +494,8 @@ provider id — the gate would read identically if Azure were removed from the r
 
 ## Out of scope
 
-Mid-draw critique. Canvas mutation tools (`highlight_object`, `zoom_to`, `erase_object`,
+Additional agents beyond one per locus — client-side work is decomposed into deterministic workers
+instead, and parallel server-side reasoning agents are deferred to Phase 12. Mid-draw critique.
+Canvas mutation tools (`highlight_object`, `zoom_to`, `erase_object`,
 `relayout_region` — Phase 11). Multimodal changes to `agent-core` or any provider adapter. A UI
 toggle for vision. Server-side headless rasterisation for critique. Any change to `apps/web`.
