@@ -46,7 +46,7 @@ export async function startVisionAgent(options: StartVisionAgentOptions): Promis
     provider: createProxyProvider({ endpoint: `${base}/api/agent/llm`, fetchImpl: doFetch }),
     visionEnabled: true,
     signal: options.signal,
-    capture: options.capture as never,
+    capture: options.capture,
 
     critique: async (image) => {
       const response = await doFetch(`${base}/api/agent/vision-critique`, {

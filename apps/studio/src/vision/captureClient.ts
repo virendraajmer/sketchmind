@@ -5,22 +5,30 @@
  * has what they came for. A capture that does not happen costs a critique round,
  * nothing more, so every path returns a `ValidationResult` rather than throwing.
  */
-import { fail, makeError, ok, type ValidationResult } from "@sketchmind/shared-types";
+import type { CapturedImage } from "@sketchmind/renderer-core";
+import { fail as failResult, makeError, ok, type ValidationResult } from "@sketchmind/shared-types";
 
 const PACKAGE = "@sketchmind/studio";
 
-export interface CapturedImage {
-  readonly mimeType: string;
-  readonly width: number;
-  readonly height: number;
-  readonly data: Uint8Array;
-}
+// Structurally identical to the worker's own reply shape; re-exported rather
+// than redeclared so `bootstrap.ts` doesn't need to cast between two
+// independently-declared but identical interfaces.
+export type { CapturedImage };
 
 export interface EncodeCaptureOptions {
   readonly worker: Worker;
   /** Produces the bitmap to encode. Injected so tests need no real canvas. */
   readonly toBitmap: () => Promise<ImageBitmap>;
 }
+
+/**
+ * Last-resort safety net. `worker.onerror` covers construction/script
+ * failures and `capture.worker.ts`'s own try/catch covers everything inside
+ * its handler, but neither can prove a message will *always* arrive -- a
+ * timeout is the only way to guarantee this promise settles no matter what
+ * goes wrong on the worker thread.
+ */
+const CAPTURE_TIMEOUT_MS = 10_000;
 
 export async function encodeCapture(
   options: EncodeCaptureOptions,
@@ -29,7 +37,7 @@ export async function encodeCapture(
   try {
     bitmap = await options.toBitmap();
   } catch (cause) {
-    return fail([
+    return failResult([
       makeError({
         code: "CAPTURE_FAILED",
         message: `The canvas could not be captured: ${(cause as Error).message}`,
@@ -41,24 +49,39 @@ export async function encodeCapture(
   }
 
   return new Promise((resolve) => {
+    let settled = false;
+    const finish = (result: ValidationResult<CapturedImage>) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
+    const fail = (message: string) =>
+      finish(
+        failResult([
+          makeError({
+            code: "CAPTURE_FAILED",
+            message,
+            package: PACKAGE,
+            stage: "render",
+            recoverable: true,
+          }),
+        ]),
+      );
+
+    const timer = setTimeout(
+      () => fail("The capture worker did not respond in time."),
+      CAPTURE_TIMEOUT_MS,
+    );
+
     options.worker.onmessage = (event: MessageEvent) => {
       const reply = event.data as { error?: string; mimeType?: string; width?: number; height?: number; data?: ArrayBuffer };
       if (reply.error || !reply.data) {
-        resolve(
-          fail([
-            makeError({
-              code: "CAPTURE_FAILED",
-              message: reply.error ?? "The capture worker returned no image.",
-              package: PACKAGE,
-              stage: "render",
-              recoverable: true,
-            }),
-          ]),
-        );
+        fail(reply.error ?? "The capture worker returned no image.");
         return;
       }
 
-      resolve(
+      finish(
         ok({
           mimeType: reply.mimeType ?? "image/png",
           width: reply.width ?? 0,
@@ -66,6 +89,16 @@ export async function encodeCapture(
           data: new Uint8Array(reply.data),
         }),
       );
+    };
+
+    // Covers what the worker's own try/catch cannot: construction failures,
+    // an uncaught error before the handler runs, or the script failing to
+    // load at all -- none of those post a message, so without this the
+    // returned promise would hang forever (contradicts this module's own
+    // "failure here is never fatal" contract).
+    options.worker.onerror = (event) => {
+      const message = event instanceof ErrorEvent ? event.message : "The capture worker crashed.";
+      fail(message);
     };
 
     options.worker.postMessage({ bitmap }, [bitmap as unknown as Transferable]);

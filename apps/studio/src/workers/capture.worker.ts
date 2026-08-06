@@ -29,25 +29,33 @@ export interface CaptureReply {
 }
 
 self.onmessage = async (event: MessageEvent<CaptureRequest>): Promise<void> => {
-  const { bitmap } = event.data;
-  const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-  const context = canvas.getContext("2d");
-  if (!context) {
-    self.postMessage({ error: "OffscreenCanvas 2d context unavailable" });
-    return;
+  try {
+    const { bitmap } = event.data;
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const context = canvas.getContext("2d");
+    if (!context) {
+      self.postMessage({ error: "OffscreenCanvas 2d context unavailable" });
+      return;
+    }
+
+    context.drawImage(bitmap, 0, 0);
+    bitmap.close();
+
+    const blob = await canvas.convertToBlob({ type: "image/png" });
+    const data = await blob.arrayBuffer();
+
+    const reply: CaptureReply = {
+      mimeType: "image/png",
+      width: canvas.width,
+      height: canvas.height,
+      data,
+    };
+    self.postMessage(reply, [data]);
+  } catch (error) {
+    // Any failure here (a hostile bitmap, `convertToBlob` rejecting, etc.)
+    // must still produce a message -- `captureClient.ts`'s promise would
+    // otherwise never settle. Matches the `{ error?: string }` shape it
+    // already knows how to handle.
+    self.postMessage({ error: error instanceof Error ? error.message : String(error) });
   }
-
-  context.drawImage(bitmap, 0, 0);
-  bitmap.close();
-
-  const blob = await canvas.convertToBlob({ type: "image/png" });
-  const data = await blob.arrayBuffer();
-
-  const reply: CaptureReply = {
-    mimeType: "image/png",
-    width: canvas.width,
-    height: canvas.height,
-    data,
-  };
-  self.postMessage(reply, [data]);
 };

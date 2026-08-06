@@ -136,12 +136,16 @@ export function useSession(getBitmap?: () => Promise<ImageBitmap>): Session {
   const pendingFrame = useRef<RuntimeEvent | null>(null);
   const raf = useRef<number | null>(null);
 
-  const flushFrame = useCallback(() => {
-    raf.current = null;
+  const applyPendingFrame = useCallback(() => {
     const next = pendingFrame.current;
     pendingFrame.current = null;
     if (next) setState((current) => reduce(current, next));
   }, []);
+
+  const flushFrame = useCallback(() => {
+    raf.current = null;
+    applyPendingFrame();
+  }, [applyPendingFrame]);
 
   const scheduleFrame = useCallback(
     (event: RuntimeEvent) => {
@@ -151,6 +155,24 @@ export function useSession(getBitmap?: () => Promise<ImageBitmap>): Session {
     },
     [flushFrame],
   );
+
+  /**
+   * Cancels any pending rAF and applies its frame *now*, synchronously.
+   * Needed wherever a non-`FrameUpdate` event might land in the same tick as
+   * a still-pending `FrameUpdate` (most importantly a terminal event right
+   * behind the drawing's last frame) -- otherwise `close()` nulling
+   * `pendingFrame` would silently drop it, and applying it *after* a later
+   * event's own `reduce` would let `FrameUpdate`'s `phase: "drawing"`
+   * clobber a phase (e.g. `"done"`) that logically came after it (Task 12
+   * review findings #2).
+   */
+  const flushPendingFrame = useCallback(() => {
+    if (raf.current !== null) {
+      cancelAnimationFrame(raf.current);
+      raf.current = null;
+    }
+    applyPendingFrame();
+  }, [applyPendingFrame]);
 
   const close = useCallback(() => {
     source.current?.close();
@@ -233,20 +255,32 @@ export function useSession(getBitmap?: () => Promise<ImageBitmap>): Session {
 
         if (decoded.value.type === "FrameUpdate") {
           scheduleFrame(decoded.value);
-        } else {
-          setState((current) => reduce(current, decoded.value));
+          return;
         }
 
-        if (TERMINAL.has(decoded.value.type)) close();
+        // Any `FrameUpdate` still batched in a pending rAF must land *before*
+        // this event's own reduce -- otherwise a terminal event arriving in
+        // the same tick as the drawing's last frame would lose it (dropped by
+        // `close()`) or have it applied afterward, clobbering this event's
+        // phase with `FrameUpdate`'s unconditional `phase: "drawing"`.
+        flushPendingFrame();
+        setState((current) => reduce(current, decoded.value));
 
-        if (decoded.value.type === "SessionCompleted") {
-          // Fire-and-forget: a redraw comes from the event stream this session
-          // is already reading (`VisionCritique`, then a repair turn's own
-          // events), not from this promise settling.
-          void startVisionAgent({
+        if (!TERMINAL.has(decoded.value.type)) return;
+
+        if (decoded.value.type === "SessionCompleted" && visionEnabled) {
+          // The stream must stay open past this session's own terminal event:
+          // `VisionCritique` and a repair turn's own step/frame events arrive
+          // on this same stream, emitted server-side only after
+          // `/api/sessions/:id/findings` is called below. Closing here would
+          // mean the UI can never observe them. Close once the vision agent's
+          // run has settled instead -- its own repair loop and findings
+          // reporting already bound how long that takes (AD-2).
+          startVisionAgent({
             sessionId: id,
             request: userInput,
             visionEnabled,
+            apiBase: API,
             signal: controller.signal,
             capture: async () => {
               if (!getBitmap) {
@@ -262,8 +296,22 @@ export function useSession(getBitmap?: () => Promise<ImageBitmap>): Session {
                 worker.terminate();
               }
             },
-          });
+          })
+            .catch((error: unknown) => {
+              // Abort is the expected path here, not a failure: `signal` is
+              // aborted deliberately on unmount and on the next `start()`.
+              if (controller.signal.aborted) return;
+              // Last-resort visibility for a genuinely unexpected failure;
+              // the vision agent's own repair loop and findings reporting
+              // already handle its in-band error paths (AD-2), so this is
+              // the out-of-band case.
+              console.error("[studio] vision agent run failed:", error);
+            })
+            .finally(close);
+          return;
         }
+
+        close();
       };
 
       stream.onerror = () => {
@@ -277,7 +325,7 @@ export function useSession(getBitmap?: () => Promise<ImageBitmap>): Session {
         }
       };
     },
-    [close, scheduleFrame, getBitmap],
+    [close, scheduleFrame, flushPendingFrame, getBitmap],
   );
 
   const cancel = useCallback(async () => {
