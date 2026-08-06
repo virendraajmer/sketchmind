@@ -11,10 +11,11 @@
  *
  * Run after `pnpm build`.
  */
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-const BUNDLE = "apps/web/.next/static";
+const targetDirs = process.argv.slice(2);
+const BUNDLES = targetDirs.length > 0 ? targetDirs : ["apps/web/.next/static"];
 
 /**
  * Each entry is a thing that must never be in a browser bundle, and why. The
@@ -44,21 +45,24 @@ let scanned = 0;
 const violations = [];
 
 try {
-  for (const file of files(BUNDLE)) {
-    scanned += 1;
-    const content = readFileSync(file, "utf8");
-    for (const { pattern, why } of FORBIDDEN) {
-      if (pattern.test(content)) violations.push({ file, pattern: String(pattern), why });
+  for (const bundle of BUNDLES) {
+    if (!existsSync(bundle)) continue;
+    for (const file of files(bundle)) {
+      scanned += 1;
+      const content = readFileSync(file, "utf8");
+      for (const { pattern, why } of FORBIDDEN) {
+        if (pattern.test(content)) violations.push({ file, pattern: String(pattern), why });
+      }
     }
   }
 } catch (error) {
-  console.error(`Could not read ${BUNDLE}. Run \`pnpm build\` first.\n${error.message}`);
+  console.error(`Could not read bundle directories. Run build scripts first.\n${error.message}`);
   process.exit(1);
 }
 
 // A scan that matched nothing because it found nothing to scan is not a pass.
 if (scanned === 0) {
-  console.error(`No bundle files found under ${BUNDLE}. Run \`pnpm build\` first.`);
+  console.error(`No bundle files found under ${BUNDLES.join(", ")}. Run \`pnpm build\` first.`);
   process.exit(1);
 }
 
