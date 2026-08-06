@@ -2,6 +2,16 @@
 
 LayoutModel to StrokeAST plus optimizer. Applies human drawing rules.
 
+`planStrokes(ast, layout, options?)` orders the drawing in five phases — outline,
+detail, connector, annotation, label — and within each by the layout's own
+`zIndex`. Order is decided semantically, never by nearest-neighbour over
+coordinates, so a layout nudge cannot reshuffle the sequence. Points are exact:
+`style.jitter` travels as intent for the renderer to seed from `stroke.id`.
+
+Shapes come from a generator registry (`box`, `disc`, plus whatever
+`registerStrokeGenerator` adds) rather than a built-in shape table — see
+`docs/superpowers/plans/2026-08-05-phase-7-stroke-engine.md` D-4.
+
 ## Public API
 
 See `src/index.ts`. Internals live in `src/internal/` and are not importable

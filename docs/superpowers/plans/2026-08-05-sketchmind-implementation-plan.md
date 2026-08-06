@@ -1003,11 +1003,11 @@ sits above `agent`. See `docs/superpowers/plans/2026-08-05-phase-5-reasoning-too
 
 `stroke-planner` orders strokes per V06 human drawing rules — outlines first, detail after, labels last, connected objects continuous, no unnatural pen jumps — then optimizes without changing semantics. `stroke-runtime` provides play/pause/resume/seek/replay/undo/redo/cancel over a timeline, progressive-rendering hooks, and the editing API (insert/delete/move/replace/reorder).
 
-**Acceptance:**
-- [ ] Pulley layout yields natural order (ceiling → pulleys → rope → load → arrow → labels last).
-- [ ] Play, pause mid-sequence, resume, replay are deterministic across runs.
-- [ ] Undo removes exactly the last stroke; redo restores it; no side effects.
-- [ ] Optimizer never changes which objects exist — verified by object-coverage diff, not stroke count.
+**Acceptance:** (complete — see `2026-08-05-phase-7-stroke-engine.md`)
+- [x] Pulley layout yields natural order (ceiling → pulleys → rope → load → arrow → labels last).
+- [x] Play, pause mid-sequence, resume, replay are deterministic across runs.
+- [x] Undo removes exactly the last stroke; redo restores it; no side effects.
+- [x] Optimizer never changes which objects exist — verified by object-coverage diff, not stroke count.
 
 ---
 

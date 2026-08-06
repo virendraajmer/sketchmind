@@ -20,6 +20,8 @@
     "@sketchmind/llm-provider-anthropic": "workspace:*",
     "@sketchmind/llm-provider-azure-openai": "workspace:*",
     "@sketchmind/shared-types": "workspace:*",
+    "@sketchmind/stroke-planner": "workspace:*",
+    "@sketchmind/stroke-runtime": "workspace:*",
     "zod": "^4.4.3"
   },
   "devDependencies": {

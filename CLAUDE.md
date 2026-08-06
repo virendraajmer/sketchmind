@@ -100,12 +100,15 @@ overrides back to `Bundler` because Next.js requires it.
 
 ## Project status
 
-Phases 1–6 complete (repo foundation, core models, LLM provider abstraction, agent-core +
-agent-memory, reasoning tools, constraint-engine + layout-engine). Phase 7 (stroke-planner +
-stroke-runtime) is next. See the implementation plan doc for phase-by-phase scope and acceptance
-criteria before starting new package work, plus
+Phases 1–7 complete (repo foundation, core models, LLM provider abstraction, agent-core +
+agent-memory, reasoning tools, constraint-engine + layout-engine, stroke-planner + stroke-runtime).
+Phase 8 (renderer-core + renderer-konva, first real pixels) is next. See the implementation plan doc
+for phase-by-phase scope and acceptance criteria before starting new package work, plus
 `docs/superpowers/plans/2026-08-05-phase-5-reasoning-tools.md` for the decisions Phase 5 settled
-(prompt templates as data, the geometry guard, `ReasoningWorkspace`) and
+(prompt templates as data, the geometry guard, `ReasoningWorkspace`),
 `docs/superpowers/plans/2026-08-05-phase-6-layout-engine.md` for Phase 6's (the `intersects` overlap
 exemption, the two-pass box-model solver, why collision resolution needs no ancestor exemption,
-perimeter-only anchor resolution).
+perimeter-only anchor resolution), and
+`docs/superpowers/plans/2026-08-05-phase-7-stroke-engine.md` for Phase 7's (semantic five-phase
+drawing order rather than nearest-neighbour, the generator registry, exact points with jitter left
+to the renderer, the optimizer's object-coverage invariant, a timer-free runtime).

@@ -386,6 +386,12 @@ importers:
       '@sketchmind/shared-types':
         specifier: workspace:*
         version: link:../packages/shared-types
+      '@sketchmind/stroke-planner':
+        specifier: workspace:*
+        version: link:../packages/stroke-planner
+      '@sketchmind/stroke-runtime':
+        specifier: workspace:*
+        version: link:../packages/stroke-runtime
       zod:
         specifier: ^4.4.3
         version: 4.4.3

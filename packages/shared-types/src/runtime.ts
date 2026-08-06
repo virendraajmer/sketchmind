@@ -34,8 +34,14 @@ export const SessionSchema = z.object({
 });
 export type Session = z.infer<typeof SessionSchema>;
 
+/**
+ * `cancelled` is a Phase 7 addition. Volume 06 lists Cancel alongside Play and
+ * Pause as a first-class runtime operation, and a cancelled playback is not the
+ * same observable state as a paused or completed one -- the trace panel has to
+ * tell them apart.
+ */
 export const PlaybackStateSchema = z.object({
-  status: z.enum(["idle", "playing", "paused", "completed"]),
+  status: z.enum(["idle", "playing", "paused", "completed", "cancelled"]),
   /** Index of the next stroke to draw. */
   cursor: z.number().int().nonnegative(),
   speed: z.number().positive().default(1),
