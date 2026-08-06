@@ -79,6 +79,7 @@ export class AzureOpenAIProvider implements LLMProvider {
   private readonly client: OpenAI;
   private readonly logger: ProviderLogger;
   private readonly retryPolicy: RetryPolicy;
+  private readonly visionDeployment: string;
 
   constructor(options: AzureOpenAIProviderOptions) {
     this.model = options.config.deployment;
@@ -86,6 +87,7 @@ export class AzureOpenAIProvider implements LLMProvider {
     this.client = options.client ?? makeClient(options.config);
     this.logger = options.logger ?? noopLogger;
     this.retryPolicy = options.retryPolicy ?? DEFAULT_RETRY_POLICY;
+    this.visionDeployment = options.config.visionDeployment ?? "";
   }
 
   /** Shared by every call: one retry loop, one error classification, one log line. */
@@ -266,12 +268,23 @@ export class AzureOpenAIProvider implements LLMProvider {
     // no image is encoded or transmitted while vision is off, and returning an
     // error after building the payload would not honour it.
     if (!this.capabilities.vision) {
-      throw providerError(
-        ProviderErrorCode.CapabilityUnavailable,
-        "Image input is disabled. Set AZURE_OPENAI_VISION_DEPLOYMENT to enable the visual " +
-          "self-correction tier (AD-3 / Phase 10b).",
-        PACKAGE,
-      );
+      // Names the deployment THIS instance holds, not just the env var: since
+      // Phase 10 Task 5, AZURE_OPENAI_VISION_DEPLOYMENT can already be set while
+      // this particular instance is bound to a different (text) deployment via
+      // a per-role model override. "Set AZURE_OPENAI_VISION_DEPLOYMENT" alone is
+      // then wrong advice -- the operator may have already set it, for a role
+      // that is not this one -- so the message says which deployment this is
+      // and which deployment (if any) is configured as the vision one.
+      const message =
+        this.visionDeployment === ""
+          ? `Image input is disabled: deployment "${this.model}" is not vision-capable, and no ` +
+            "AZURE_OPENAI_VISION_DEPLOYMENT is configured. Set it to a vision-capable deployment " +
+            "and route the vision role to it to enable the visual self-correction tier " +
+            "(AD-3 / Phase 10b)."
+          : `Image input is disabled: deployment "${this.model}" is not the vision deployment ` +
+            `(AZURE_OPENAI_VISION_DEPLOYMENT is "${this.visionDeployment}"). Route the vision role ` +
+            "to that deployment to enable the visual self-correction tier (AD-3 / Phase 10b).";
+      throw providerError(ProviderErrorCode.CapabilityUnavailable, message, PACKAGE);
     }
 
     const content: Responses.ResponseInputMessageContentList = [

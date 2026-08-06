@@ -32,6 +32,21 @@ describe("configFromEnv", () => {
     expect(config.baseURL).toBe("https://gateway.internal/anthropic");
   });
 
+  it("lets a per-role override win over ANTHROPIC_MODEL", () => {
+    // The Task 5 hand-off: a role selecting a different model on this same
+    // adapter cannot be expressed by ANTHROPIC_MODEL alone.
+    const config = configFromEnv(
+      { ...VALID, ANTHROPIC_MODEL: "claude-opus-4-1" },
+      { model: "claude-sonnet-4-5" },
+    );
+    expect(config.model).toBe("claude-sonnet-4-5");
+  });
+
+  it("falls back to ANTHROPIC_MODEL when no override is given", () => {
+    const config = configFromEnv({ ...VALID, ANTHROPIC_MODEL: "claude-opus-4-1" });
+    expect(config.model).toBe("claude-opus-4-1");
+  });
+
   it("rejects a missing key", () => {
     const error = expectMisconfigured({});
     expect(error.error.code).toBe(ProviderErrorCode.Misconfigured);

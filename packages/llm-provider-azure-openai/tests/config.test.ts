@@ -84,6 +84,25 @@ describe("configFromEnv", () => {
     const error = expectMisconfigured({ ...VALID, AZURE_OPENAI_USE_ENTRA_ID: "1" });
     expect(error.message).not.toContain("secret");
   });
+
+  it("lets a per-role override pick a different deployment than env, end to end", () => {
+    // Exercises the configFromEnv -> capabilitiesFromEnv hand-off, not just
+    // capabilitiesFromEnv called directly -- a break in that hand-off (e.g. the
+    // options argument silently dropped between the two calls) would not show
+    // up in the capabilitiesFromEnv-only tests below.
+    const config = configFromEnv(
+      { ...VALID, AZURE_OPENAI_VISION_DEPLOYMENT: "gpt-vision" },
+      { model: "gpt-vision" },
+    );
+    expect(config.deployment).toBe("gpt-vision");
+    expect(config.capabilities.vision).toBe(true);
+  });
+
+  it("leaves the deployment at its env value when no override is given", () => {
+    const config = configFromEnv({ ...VALID, AZURE_OPENAI_VISION_DEPLOYMENT: "gpt-vision" });
+    expect(config.deployment).toBe(VALID.AZURE_OPENAI_DEPLOYMENT);
+    expect(config.capabilities.vision).toBe(false);
+  });
 });
 
 describe("capabilitiesFromEnv", () => {
@@ -121,6 +140,15 @@ describe("capabilitiesFromEnv", () => {
         { model: "gpt-vision" },
       ).vision,
     ).toBe(true);
+    // (e) An override does not itself imply vision -- it must still match the
+    // configured vision deployment. Guards against a future simplification
+    // that treats "an override was given" as "this is the vision role".
+    expect(
+      capabilitiesFromEnv(
+        { AZURE_OPENAI_DEPLOYMENT: "gpt-4o-text", AZURE_OPENAI_VISION_DEPLOYMENT: "gpt-vision" },
+        { model: "gpt-4o-mini" },
+      ).vision,
+    ).toBe(false);
   });
 
   it("lets a probe result be written back as configuration", () => {

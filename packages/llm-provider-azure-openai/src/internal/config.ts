@@ -31,6 +31,15 @@ export interface AzureOpenAIConfig {
   readonly auth: AzureAuth;
   readonly capabilities: LLMCapabilities;
   readonly timeoutMs: number;
+  /**
+   * The configured vision deployment name, empty (or omitted) when unset.
+   * Carried through (rather than re-read from env at error time) so the
+   * adapter's refusal message can name it without reaching back into
+   * `process.env` -- config readers here never do that, adapters take `env`
+   * as a value (see file header of `registry.ts`). Optional so a hand-built
+   * `AzureOpenAIConfig` (as tests construct) does not need to name it.
+   */
+  readonly visionDeployment?: string;
 }
 
 /**
@@ -133,6 +142,7 @@ export function configFromEnv(env: ProviderEnv, options?: ProviderOptions): Azur
     deployment,
     auth: useEntra ? { kind: "entra" } : { kind: "api-key", apiKey },
     capabilities: capabilitiesFromEnv(env, options),
+    visionDeployment: env["AZURE_OPENAI_VISION_DEPLOYMENT"]?.trim() ?? "",
     timeoutMs: readNumber(env["AZURE_OPENAI_TIMEOUT_MS"], 120_000),
   };
 }

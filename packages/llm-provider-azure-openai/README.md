@@ -39,6 +39,16 @@ Vision stays off (`AZURE_OPENAI_VISION_DEPLOYMENT` unset) per the standing
 directive that the agent works on JSON only; `completeWithImages()` refuses
 before it reads `req.images`.
 
+The flag is honest per instance, not per process: a provider only reports
+`vision: true` when the deployment it was actually constructed with equals
+`AZURE_OPENAI_VISION_DEPLOYMENT`. If `AZURE_OPENAI_DEPLOYMENT` names a
+different (text) deployment, setting the vision variable enables nothing by
+itself -- reaching the vision deployment requires a caller that passes a
+per-role model override to `ProviderRegistry.create`/`createAzureOpenAIProvider`
+(Phase 10 Task 6's role resolver does this). `createProviderFromEnv`, the
+default single-provider path, does not forward such an override, so in that
+mode the two variables should simply name the same deployment.
+
 ## Testing
 
 - `tests/provider.test.ts` — the full contract suite, plus adapter-specific
