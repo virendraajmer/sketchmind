@@ -519,6 +519,9 @@ importers:
       '@sketchmind/agent-tools-reasoning':
         specifier: workspace:*
         version: link:../packages/agent-tools-reasoning
+      '@sketchmind/agent-vision':
+        specifier: workspace:*
+        version: link:../packages/agent-vision
       '@sketchmind/constraint-engine':
         specifier: workspace:*
         version: link:../packages/constraint-engine

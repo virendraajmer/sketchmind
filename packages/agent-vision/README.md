@@ -16,11 +16,11 @@ See `src/index.ts` for complete exports. The four entry points:
 
 - **`critiqueGeometry(input)`** — Run geometric checks on a diagram. Input: `{ ast, layout, strokes?, options? }`. Returns `CritiqueFinding[]`. Called by the repair loop and available as an agent tool.
 
-- **`critiqueImage(provider, image, request)`** — Multimodal critique of a rendered diagram. Server-side only. Returns a `ValidationResult<CritiqueFinding[]>`.
+- **`critiqueImage(input)`** — Multimodal critique of a rendered diagram. Input: `{ provider, image, request, layoutSummary, signal? }`. Server-side only. Returns `ValidationResult<CritiqueFinding[]>`.
 
 - **`createVisionTools(options)`** — Expose critique to the server agent. Returns `ToolDefinition[]` for `critique_diagram`. Options include accessors for current AST/layout/strokes and geometric check configuration.
 
-- **`runVisionAgent(provider, image, findings)`** — Client-side vision agent that wakes after rendering completes or after a repair redraw settles. One loop per session, bounded budget, shared session memory. Decides whether to accept findings or report nothing.
+- **`runVisionAgent(options)`** — Client-side vision agent. Input: `{ sessionId, request, provider, capture, critique, report, visionEnabled, signal, maxSteps?, maxTokens?, timeoutMs?, onStep? }`. When `visionEnabled` is false, returns immediately without building a tool registry or capturing anything. Otherwise runs a bounded `agent-core` loop (`capture_canvas` → `critique_canvas` → `report_findings`) and returns `{ reported, rounds, stopReason }`.
 
 ## Dependency rules
 
