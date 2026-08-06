@@ -12,14 +12,16 @@
  * third is the one that stops oscillation -- an agent that "fixes" something
  * into the same state forever is the failure mode a budget alone does not catch.
  *
- * A fourth thing is not a guard but a check on the round that did run: the
- * repair agent can call `solve_layout` and then stop -- budget exhausted, or
- * it thinks it is done -- without ever reaching `plan_strokes`. Nothing about
- * that failure mode trips the three guards above; `accepted: true` has already
- * gone out, and the picture on screen is unchanged. So after the turn, the
- * stroke accessor is compared by reference to what it was before: unchanged
- * means `plan_strokes` never ran, and that is reported the same way a finding
- * is, rather than left for the viewer to notice the drawing never moved.
+ * A fourth thing is not a guard but an observation about the round that did
+ * run: `plan_strokes` may never get called -- because the repair agent
+ * stopped short (budget exhausted, or it thinks it is done), or because it
+ * correctly judged a finding wrong and changed nothing, which the goal text
+ * explicitly permits. Neither case trips the three guards above; `accepted:
+ * true` has already gone out either way, and the picture on screen is
+ * unchanged. So after the turn, the stroke accessor is compared by reference
+ * to what it was before, and an unchanged reference is reported the same way
+ * a finding is -- not as a verdict on why nothing changed, just the fact that
+ * it didn't, which the viewer is owed either way.
  */
 import { randomUUID } from "node:crypto";
 import { runAgent, type ToolRegistry } from "@sketchmind/agent-core";
@@ -81,16 +83,25 @@ function describeProposal(proposal: NonNullable<CritiqueFinding["proposal"]>): s
   }
 }
 
-/** A finding-shaped way to say "the repair round did not reach the whiteboard". */
+/**
+ * A finding-shaped way to say "the drawing on screen did not change this
+ * round". Deliberately neutral, not an accusation: the goal explicitly
+ * permits a correct no-op ("If a finding is wrong, say so and change
+ * nothing"), so an unchanged plan is sometimes the *right* outcome, not a
+ * repair that stopped short. Either way the round was spent and the viewer
+ * is owed the observation -- just not a verdict this function isn't in a
+ * position to make.
+ */
 function stalePlanFinding(tier: CritiqueTier): CritiqueFinding {
   return {
-    id: `repair-incomplete-${randomUUID()}`,
+    id: `repair-no-change-${randomUUID()}`,
     tier,
-    check: "repair-incomplete",
-    severity: "warning",
+    check: "repair-no-change",
+    severity: "info",
     message:
-      "The repair turn ran but never called plan_strokes, so the drawing on screen is unchanged " +
-      "from before the repair even though the round was spent.",
+      "This repair round finished without calling plan_strokes, so the drawing on screen is the " +
+      "same as before the round -- either the agent judged the findings did not need a change, or " +
+      "it stopped before reaching that step.",
     objectIds: [],
   };
 }

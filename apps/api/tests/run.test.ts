@@ -15,7 +15,14 @@ import { InMemoryStore } from "@sketchmind/agent-memory";
 import type { RuntimeEvent } from "@sketchmind/session-protocol";
 import { runSession } from "../src/session/run.js";
 import { SessionManager, type SessionRecord } from "../src/session/manager.js";
-import { DRAWS_A_PULLEY, DRAWS_NOTHING, pulleyProvider, testConfig } from "./support.js";
+import {
+  DRAWS_A_PULLEY,
+  DRAWS_NOTHING,
+  DRAWS_OVERLAPPING_BOXES,
+  overlappingBoxesProvider,
+  pulleyProvider,
+  testConfig,
+} from "./support.js";
 
 interface Recorded {
   readonly events: RuntimeEvent[];
@@ -189,5 +196,35 @@ describe("cancellation", () => {
       ["SessionCompleted", "SessionFailed", "SessionCancelled"].includes(type),
     );
     expect(terminal).toHaveLength(1);
+  });
+});
+
+describe("the automatic geometric pass", () => {
+  it("catches a real overlap in the solved layout and runs a repair turn for it", async () => {
+    const record = createSession("Draw two overlapping boxes");
+    const provider = overlappingBoxesProvider(DRAWS_OVERLAPPING_BOXES);
+    const events: RuntimeEvent[] = [];
+
+    await runSession({
+      sessionId: record.sessionId,
+      userInput: record.request,
+      provider,
+      store: new InMemoryStore(),
+      config: testConfig(),
+      emit: (event) => events.push(event),
+      sleep: async () => {},
+      record,
+    });
+
+    const critiques = events.filter((event) => event.type === "VisionCritique");
+    expect(critiques.length).toBeGreaterThan(0);
+    const accepted = critiques.find((event) => event.type === "VisionCritique" && event.accepted);
+    if (accepted?.type !== "VisionCritique") throw new Error("no accepted VisionCritique event");
+    expect(accepted.findings.some((finding) => finding.check === "overlap")).toBe(true);
+
+    // The repair turn actually ran a second agent turn on the same provider --
+    // not just a guard that decided not to bother -- and the round was spent.
+    expect(provider.calls.length).toBeGreaterThan(4);
+    expect(record.repairRounds).toBe(1);
   });
 });
