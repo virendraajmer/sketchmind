@@ -14,7 +14,7 @@
  * client agent that believed otherwise would build a request the server would
  * reject.
  */
-import { ProviderErrorCode, providerError } from "./internal/errors.js";
+import { ProviderErrorCode, classifyFailure, providerError } from "./internal/errors.js";
 import type {
   CompletionChunk,
   CompletionRequest,
@@ -91,9 +91,13 @@ export function createProxyProvider(options: ProxyProviderOptions): LLMProvider 
       });
 
       if (!response.ok) {
-        throw providerError(
-          response.status === 429 ? ProviderErrorCode.RateLimited : ProviderErrorCode.Unavailable,
-          `The LLM proxy answered ${response.status}.`,
+        // `classifyFailure` (internal/errors.ts) already maps status codes to
+        // the codes callers actually need to act on -- 400 is a client bug in
+        // this very request, not the model being unreachable, and collapsing
+        // both into `Unavailable` would send whoever reads the error code
+        // looking for an outage that isn't there.
+        throw classifyFailure(
+          { status: response.status, message: `The LLM proxy answered ${response.status}.` },
           PACKAGE,
         );
       }
