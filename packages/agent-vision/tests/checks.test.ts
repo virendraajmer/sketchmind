@@ -12,6 +12,21 @@ const node = (objectId: string, x: number, y: number, width = 20, height = 20) =
   zIndex: 0,
 });
 
+const label = (
+  labelId: string,
+  targetId: string,
+  x: number,
+  y: number,
+  width = 20,
+  height = 10,
+) => ({
+  labelId,
+  targetId,
+  position: { x, y },
+  bounds: { x, y, width, height },
+  text: labelId,
+});
+
 const ast = { objects: [], relationships: [] } as unknown as DiagramAST;
 
 function layout(partial: Partial<LayoutModel>): LayoutModel {
@@ -52,6 +67,39 @@ describe("overlap", () => {
   it("stays silent for nodes that merely touch", () => {
     expect(runCheck("overlap", input(layout({ nodes: [node("a", 0, 0), node("b", 20, 0)] })))).toEqual([]);
   });
+
+  it("stays silent for a label overlapping the node it labels", () => {
+    const found = runCheck(
+      "overlap",
+      input(layout({ nodes: [node("a", 0, 0)], labels: [label("la", "a", 0, 0)] })),
+    );
+    expect(found).toEqual([]);
+  });
+
+  it("reports a label overlapping a different node", () => {
+    const found = runCheck(
+      "overlap",
+      input(layout({ nodes: [node("a", 0, 0), node("b", 100, 100)], labels: [label("lb", "b", 0, 0)] })),
+    );
+    expect(found).toHaveLength(1);
+    expect(found[0]?.objectIds).toEqual(["lb", "a"]);
+    expect(found[0]?.proposal?.kind).toBe("reposition_label");
+  });
+
+  it("reports two labels overlapping each other", () => {
+    const found = runCheck(
+      "overlap",
+      input(
+        layout({
+          nodes: [node("a", 0, 0), node("b", 100, 100)],
+          labels: [label("l1", "a", 50, 50), label("l2", "b", 50, 50)],
+        }),
+      ),
+    );
+    expect(found).toHaveLength(1);
+    expect(found[0]?.objectIds.sort()).toEqual(["l1", "l2"]);
+    expect(found[0]?.proposal?.kind).toBe("reposition_label");
+  });
 });
 
 describe("out-of-bounds", () => {
@@ -63,6 +111,59 @@ describe("out-of-bounds", () => {
 
   it("stays silent for a node inside the canvas", () => {
     expect(runCheck("out-of-bounds", input(layout({ nodes: [node("a", 10, 10)] })))).toEqual([]);
+  });
+
+  it("reports a label outside the canvas", () => {
+    const found = runCheck(
+      "out-of-bounds",
+      input(layout({ labels: [label("la", "a", -10, 10)] })),
+    );
+    expect(found).toHaveLength(1);
+    expect(found[0]?.objectIds).toEqual(["la"]);
+  });
+
+  it("reports a connector with a waypoint outside the canvas", () => {
+    const found = runCheck(
+      "out-of-bounds",
+      input(
+        layout({
+          connectors: [
+            {
+              relationshipId: "r1",
+              routing: "straight",
+              points: [
+                { x: 10, y: 10 },
+                { x: 250, y: 10 },
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+    expect(found).toHaveLength(1);
+    expect(found[0]?.objectIds).toEqual(["r1"]);
+    expect(found[0]?.proposal?.kind).toBe("redraw_object");
+  });
+
+  it("stays silent for a connector fully inside the canvas", () => {
+    const found = runCheck(
+      "out-of-bounds",
+      input(
+        layout({
+          connectors: [
+            {
+              relationshipId: "r1",
+              routing: "straight",
+              points: [
+                { x: 10, y: 10 },
+                { x: 100, y: 100 },
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+    expect(found).toEqual([]);
   });
 });
 
@@ -107,6 +208,32 @@ describe("anchor-miss", () => {
     });
     expect(runCheck("anchor-miss", input(met))).toEqual([]);
   });
+
+  const withMeta = (metadata: Record<string, unknown>) =>
+    layout({
+      ...anchored,
+      connectors: [{ ...anchored.connectors[0]!, metadata }],
+    });
+
+  it("stays silent when the anchor reference has no colon", () => {
+    expect(runCheck("anchor-miss", input(withMeta({ sourceAnchor: "noColon" })))).toEqual([]);
+  });
+
+  it("stays silent when the anchor reference is an empty string", () => {
+    expect(runCheck("anchor-miss", input(withMeta({ sourceAnchor: "" })))).toEqual([]);
+  });
+
+  it("stays silent when the anchor reference is not a string", () => {
+    expect(runCheck("anchor-miss", input(withMeta({ sourceAnchor: 42 })))).toEqual([]);
+  });
+
+  it("stays silent when the anchor reference names an unknown object", () => {
+    expect(runCheck("anchor-miss", input(withMeta({ sourceAnchor: "ghost:groove" })))).toEqual([]);
+  });
+
+  it("stays silent when the anchor reference names an unknown anchor", () => {
+    expect(runCheck("anchor-miss", input(withMeta({ sourceAnchor: "pulley:unknown" })))).toEqual([]);
+  });
 });
 
 describe("connector-crossing", () => {
@@ -128,6 +255,54 @@ describe("connector-crossing", () => {
       ],
     });
     expect(runCheck("connector-crossing", input(parallel))).toEqual([]);
+  });
+
+  it("stays silent for two connectors that merely share an endpoint", () => {
+    const joined = layout({
+      connectors: [
+        { relationshipId: "r1", routing: "straight", points: [{ x: 0, y: 0 }, { x: 50, y: 50 }] },
+        { relationshipId: "r2", routing: "straight", points: [{ x: 50, y: 50 }, { x: 100, y: 0 }] },
+      ],
+    });
+    expect(runCheck("connector-crossing", input(joined))).toEqual([]);
+  });
+
+  it("reports a connector that crosses its own route", () => {
+    const selfCrossing = layout({
+      connectors: [
+        {
+          relationshipId: "r1",
+          routing: "orthogonal",
+          points: [
+            { x: 0, y: 0 },
+            { x: 100, y: 0 },
+            { x: 100, y: 100 },
+            { x: 0, y: -50 },
+          ],
+        },
+      ],
+    });
+    const found = runCheck("connector-crossing", input(selfCrossing));
+    expect(found).toHaveLength(1);
+    expect(found[0]?.objectIds).toEqual(["r1"]);
+  });
+
+  it("stays silent for an orthogonal connector whose adjacent segments only share an endpoint", () => {
+    const orthogonal = layout({
+      connectors: [
+        {
+          relationshipId: "r1",
+          routing: "orthogonal",
+          points: [
+            { x: 0, y: 0 },
+            { x: 100, y: 0 },
+            { x: 100, y: 100 },
+            { x: 200, y: 100 },
+          ],
+        },
+      ],
+    });
+    expect(runCheck("connector-crossing", input(orthogonal))).toEqual([]);
   });
 });
 

@@ -146,6 +146,25 @@ const overlap: Check = {
       }
     }
 
+    // Two relationship labels sharing a spot are as unreadable as a label
+    // sitting on a node, so the same pairwise treatment applies here.
+    for (let i = 0; i < labels.length; i += 1) {
+      for (let j = i + 1; j < labels.length; j += 1) {
+        const a = labels[i]!;
+        const b = labels[j]!;
+        if (!boxesOverlap(a.bounds, b.bounds, options.overlapToleranceUnits)) continue;
+        found.push(
+          finding(
+            "overlap",
+            "warning",
+            `Labels "${a.text}" and "${b.text}" overlap each other.`,
+            [a.labelId, b.labelId],
+            { kind: "reposition_label", labelId: b.labelId, hint: "move it to clear space" },
+          ),
+        );
+      }
+    }
+
     return found;
   },
 };
@@ -171,6 +190,20 @@ const outOfBounds: Check = {
         finding("out-of-bounds", "warning", `Label "${label.text}" extends past the canvas edge.`, [
           label.labelId,
         ], { kind: "reposition_label", labelId: label.labelId, hint: "bring it inside the canvas" }),
+      );
+    }
+
+    for (const connector of layout.connectors) {
+      const strays = connector.points.some((p) => !containsBox(canvas, { x: p.x, y: p.y, width: 0, height: 0 }));
+      if (!strays) continue;
+      found.push(
+        finding(
+          "out-of-bounds",
+          "warning",
+          `Connector "${connector.relationshipId}" routes outside the canvas edge.`,
+          [connector.relationshipId],
+          { kind: "redraw_object", objectId: connector.relationshipId, hint: "reroute it inside the canvas" },
+        ),
       );
     }
 
@@ -254,6 +287,23 @@ const connectorCrossing: Check = {
       }
     }
 
+    for (const connector of connectors) {
+      if (!selfCrosses(connector.points)) continue;
+      found.push(
+        finding(
+          "connector-crossing",
+          "warning",
+          `Connector "${connector.relationshipId}" crosses its own route.`,
+          [connector.relationshipId],
+          {
+            kind: "redraw_object",
+            objectId: connector.relationshipId,
+            hint: "redraw it so its route does not double back on itself",
+          },
+        ),
+      );
+    }
+
     return found;
   },
 };
@@ -262,6 +312,22 @@ function crosses(a: readonly { x: number; y: number }[], b: readonly { x: number
   for (let i = 0; i < a.length - 1; i += 1) {
     for (let j = 0; j < b.length - 1; j += 1) {
       if (segmentsIntersect(a[i]!, a[i + 1]!, b[j]!, b[j + 1]!)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Pairs every segment of a route against every other, including adjacent
+ * ones. `segmentsIntersect` is proper-intersection-only, so a shared endpoint
+ * between adjacent segments -- the normal case for any orthogonal route --
+ * evaluates to false rather than a false positive; only a route that actually
+ * doubles back over itself trips this.
+ */
+function selfCrosses(points: readonly { x: number; y: number }[]): boolean {
+  for (let i = 0; i < points.length - 1; i += 1) {
+    for (let j = i + 1; j < points.length - 1; j += 1) {
+      if (segmentsIntersect(points[i]!, points[i + 1]!, points[j]!, points[j + 1]!)) return true;
     }
   }
   return false;
