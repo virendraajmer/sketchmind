@@ -28,10 +28,12 @@ export interface SessionRoutesOptions {
   readonly store: MemoryStore;
   readonly config: ApiConfig;
   readonly sessions: SessionManager;
+  /** Whether a vision-capable provider is resolved and the tier is not switched off. */
+  readonly visionEnabled: boolean;
 }
 
 export function registerSessions(app: FastifyInstance, options: SessionRoutesOptions): void {
-  const { provider, store, config, sessions } = options;
+  const { provider, store, config, sessions, visionEnabled } = options;
 
   app.post("/api/sessions", async (request, reply) => {
     const command = parseClientCommand({ type: "StartSession", ...(request.body as object) });
@@ -47,6 +49,7 @@ export function registerSessions(app: FastifyInstance, options: SessionRoutesOpt
       provider,
       store,
       config,
+      visionEnabled,
       emit: (event) => sessions.emit(sessionId, event),
       record,
     }).catch((cause: unknown) => {

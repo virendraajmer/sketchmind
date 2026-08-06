@@ -63,6 +63,13 @@ export interface RunSessionOptions {
    * whether a repair turn should still be running.
    */
   readonly record: SessionRecord;
+  /**
+   * Whether a vision-capable provider is resolved and the tier is not switched off
+   * (`config.vision.mode !== "off" && resolveRoleProvider("vision") !== undefined`, computed once
+   * in `apps/api/src/server.ts`). Carried on `SessionStarted` so `apps/studio` knows, from the
+   * wire event alone, whether to build the client agent's capture/critique tools at all.
+   */
+  readonly visionEnabled: boolean;
   /** Injected so tests advance playback without waiting in real time. */
   readonly sleep?: (ms: number) => Promise<void>;
   readonly now?: () => string;
@@ -80,7 +87,7 @@ export async function runSession(options: RunSessionOptions): Promise<void> {
     options.emit({ ...event, sessionId, at: now() } as RuntimeEvent);
   };
 
-  emit({ type: "SessionStarted", userInput });
+  emit({ type: "SessionStarted", userInput, visionEnabled: options.visionEnabled });
 
   const embedder = new LexicalEmbedder();
   const memory = new SessionMemory({ sessionId, request: userInput });

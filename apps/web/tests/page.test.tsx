@@ -73,7 +73,14 @@ const AST = {
 const event = <T extends RuntimeEvent["type"]>(
   type: T,
   extra: object = {},
-): RuntimeEvent => ({ type, sessionId: "s1", at: "2026-08-06T00:00:00.000Z", ...extra }) as RuntimeEvent;
+): RuntimeEvent =>
+  ({
+    type,
+    sessionId: "s1",
+    at: "2026-08-06T00:00:00.000Z",
+    ...(type === "SessionStarted" ? { visionEnabled: false } : {}),
+    ...extra,
+  }) as RuntimeEvent;
 
 // vitest runs with `globals: false`, so Testing Library's automatic cleanup
 // never registers itself and each render would stack another page in the DOM.

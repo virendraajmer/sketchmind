@@ -47,17 +47,20 @@ export async function buildServer(options: ServerOptions = {}): Promise<SketchMi
   // app is on :3000 and this server on :3001.
   await app.register(cors, { origin: config.webOrigin });
 
+  const visionProvider = resolveRoleProvider("vision");
+  const visionEnabled = config.vision.mode !== "off" && visionProvider !== undefined;
+
   registerHealth(app);
-  registerSessions(app, { provider, store, config, sessions });
+  registerSessions(app, { provider, store, config, sessions, visionEnabled });
   registerLlmProxy(app, provider);
   registerVisionRoute(app, {
-    provider: resolveRoleProvider("vision"),
+    provider: visionProvider,
     config,
     sessions,
   });
 
   // A deployment that depends on critique should learn at boot, not mid-session.
-  if (config.vision.mode === "on" && !resolveRoleProvider("vision")) {
+  if (config.vision.mode === "on" && !visionProvider) {
     app.log.warn(
       "SKETCHMIND_VISION_MODE=on but no vision-capable provider resolved. " +
         "Set SKETCHMIND_VISION_PROVIDER / SKETCHMIND_VISION_MODEL, or use mode=auto.",

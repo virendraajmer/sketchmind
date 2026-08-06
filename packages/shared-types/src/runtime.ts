@@ -61,7 +61,18 @@ const base = { sessionId: z.string().min(1), at: z.string() };
  * without an event of its own.
  */
 export const RuntimeEventSchema = z.discriminatedUnion("type", [
-  z.object({ ...base, type: z.literal("SessionStarted"), userInput: z.string() }),
+  z.object({
+    ...base,
+    type: z.literal("SessionStarted"),
+    userInput: z.string(),
+    /**
+     * Computed server-side from `config.vision.mode !== "off" && resolveRoleProvider("vision")
+     * !== undefined` (see `apps/api/src/routes/vision.ts`'s gate). Carried on the wire so
+     * `apps/studio` builds the client agent's tool registry without `capture_canvas` and
+     * `critique_canvas` when false -- see "The gate" in the Phase 10 design spec.
+     */
+    visionEnabled: z.boolean(),
+  }),
   z.object({ ...base, type: z.literal("StageStarted"), stage: PipelineStageSchema }),
   z.object({
     ...base,

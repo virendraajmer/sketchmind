@@ -7,6 +7,7 @@ const started: RuntimeEvent = {
   sessionId: "s1",
   at: "2026-08-06T00:00:00.000Z",
   userInput: "Draw a movable pulley",
+  visionEnabled: false,
 };
 
 describe("SSE framing", () => {
@@ -39,7 +40,7 @@ describe("SSE framing", () => {
 
   it("joins data lines a conforming peer chose to split", () => {
     const result = decodeServerEvent(
-      'event: SessionStarted\ndata: {"type":"SessionStarted","sessionId":"s1",\ndata: "at":"t","userInput":"hi"}\n\n',
+      'event: SessionStarted\ndata: {"type":"SessionStarted","sessionId":"s1",\ndata: "at":"t","userInput":"hi","visionEnabled":false}\n\n',
     );
     expect(result.ok).toBe(true);
   });
