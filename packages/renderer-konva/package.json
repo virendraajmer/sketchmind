@@ -18,6 +18,11 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json"
   },
   "dependencies": {
-    "@sketchmind/shared-types": "workspace:*"
+    "@sketchmind/renderer-core": "workspace:*",
+    "@sketchmind/shared-types": "workspace:*",
+    "konva": "^10.3.0"
+  },
+  "devDependencies": {
+    "canvas": "^3.2.3"
   }
 }

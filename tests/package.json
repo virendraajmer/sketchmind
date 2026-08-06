@@ -14,7 +14,11 @@
     "@sketchmind/agent-tools-reasoning": "workspace:*",
     "@sketchmind/constraint-engine": "workspace:*",
     "@sketchmind/diagram-ast": "workspace:*",
+    "@sketchmind/export-engine": "workspace:*",
     "@sketchmind/layout-engine": "workspace:*",
+    "@sketchmind/renderer-core": "workspace:*",
+    "@sketchmind/renderer-konva": "workspace:*",
+    "@sketchmind/renderer-svg": "workspace:*",
     "@sketchmind/shape-intelligence": "workspace:*",
     "@sketchmind/llm-provider": "workspace:*",
     "@sketchmind/llm-provider-anthropic": "workspace:*",
@@ -26,6 +30,8 @@
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
+    "canvas": "^3.2.3",
+    "konva": "^10.3.0",
     "openai": "^7.4.0"
   }
 }

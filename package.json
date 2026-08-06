@@ -15,12 +15,6 @@
     "dev": "turbo run dev --parallel",
     "probe:azure": "pnpm --filter @sketchmind/llm-provider-azure-openai run probe"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "unrs-resolver"
-    ]
-  },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
     "@types/node": "^26.1.2",

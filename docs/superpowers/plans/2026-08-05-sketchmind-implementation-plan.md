@@ -1018,13 +1018,15 @@ sits above `agent`. See `docs/superpowers/plans/2026-08-05-phase-5-reasoning-too
 
 `renderer-core` defines the adapter interface (`initialize/destroy/drawStroke/eraseStroke/updateStroke/renderFrame/resizeViewport/export/captureImage`), layer model, viewport, hit-testing, registry. `captureImage` is added for AD-3 — vision self-correction needs the canvas as an image.
 
-**Acceptance:**
-- [ ] Konva draws the pulley `StrokeAST` in order, matching a reference PNG within pixel-diff tolerance.
-- [ ] Play/pause/resume visibly controls progressive drawing.
-- [ ] `renderer-konva` imports nothing from AI, agent, constraint, or layout packages (lint-enforced).
-- [ ] PNG export contains all drawn objects.
-- [ ] Hit-testing returns the correct object id on click — **required for Phase 11**.
-- [ ] `captureImage` returns a usable image buffer — **required for Phase 10**.
+**Acceptance:** (complete — see `2026-08-05-phase-8-renderer.md`)
+- [x] Konva draws the pulley `StrokeAST` in order, matching a reference PNG within pixel-diff tolerance
+      (text excluded from the baseline; label rendering asserted structurally — D-8).
+- [x] Play/pause/resume visibly controls progressive drawing — asserted as decoded ink coverage.
+- [x] `renderer-konva` imports nothing from AI, agent, constraint, or layout packages (`check-layering.mjs`,
+      plus a direct manifest assertion).
+- [x] PNG export contains all drawn objects — verified per object by decoding the PNG.
+- [x] Hit-testing returns the correct object id on click, cross-checked against Konva's own hit graph.
+- [x] `captureImage` returns a usable image buffer — decoded and checked non-blank.
 
 ---
 

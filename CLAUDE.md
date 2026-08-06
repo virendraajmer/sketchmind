@@ -94,15 +94,32 @@ every step is traced and streamed to the UI. LLM credentials exist only server-s
 agent's LLM turns proxy through `apps/api`, and client tool calls with server-side effects are
 re-validated and authorized server-side — full autonomy on the client is never trusted on the wire.
 
+**The renderer is a pure execution layer, and `renderer-core` holds most of it.** Backends
+(`renderer-konva`, `renderer-svg`) only know how to put an already-computed polyline on a surface;
+the layer model, viewport transform, jitter synthesis, tone resolution, hit-testing and
+stroke→geometry conversion all live in `renderer-core`, which is what makes the two backends draw
+the same picture rather than a similar one. Because `renderer` sits *below* `core`, a backend
+cannot import `stroke-runtime` — so `renderer-core` declares its own `RenderFrame` matching
+`DrawingFrame` structurally, and `tests/render-pipeline.test.ts` keeps the two in step. The
+viewport is the only place pixels enter the system: a pointer event goes through
+`viewport().toWorld()` before anything semantic reads it.
+
 **Module resolution:** `tsconfig.base.json` uses `NodeNext`/`NodeNext`, not `Bundler` — required
 so `dist/` is loadable by plain `node`, not just by a bundler-aware test runner. `apps/web`
 overrides back to `Bundler` because Next.js requires it.
 
+**Headless rendering in tests:** Konva rasterises under Node via `konva/canvas-backend` +
+`node-canvas`, wired through `setupFiles` in `packages/renderer-konva/vitest.config.ts` and
+`tests/vitest.config.ts`. Render assertions therefore decode real PNG bytes. `canvas` is a
+devDependency only and is listed in `onlyBuiltDependencies` in `pnpm-workspace.yaml` (pnpm 10 no
+longer reads that field from `package.json`).
+
 ## Project status
 
-Phases 1–7 complete (repo foundation, core models, LLM provider abstraction, agent-core +
-agent-memory, reasoning tools, constraint-engine + layout-engine, stroke-planner + stroke-runtime).
-Phase 8 (renderer-core + renderer-konva, first real pixels) is next. See the implementation plan doc
+Phases 1–8 complete (repo foundation, core models, LLM provider abstraction, agent-core +
+agent-memory, reasoning tools, constraint-engine + layout-engine, stroke-planner + stroke-runtime,
+renderer-core + renderer-konva + renderer-svg + export-engine). Phase 9 (session-protocol,
+`apps/api`, `apps/web` — the vertical slice) is next. See the implementation plan doc
 for phase-by-phase scope and acceptance criteria before starting new package work, plus
 `docs/superpowers/plans/2026-08-05-phase-5-reasoning-tools.md` for the decisions Phase 5 settled
 (prompt templates as data, the geometry guard, `ReasoningWorkspace`),
@@ -111,4 +128,7 @@ exemption, the two-pass box-model solver, why collision resolution needs no ance
 perimeter-only anchor resolution), and
 `docs/superpowers/plans/2026-08-05-phase-7-stroke-engine.md` for Phase 7's (semantic five-phase
 drawing order rather than nearest-neighbour, the generator registry, exact points with jitter left
-to the renderer, the optimizer's object-coverage invariant, a timer-free runtime).
+to the renderer, the optimizer's object-coverage invariant, a timer-free runtime), and
+`docs/superpowers/plans/2026-08-05-phase-8-renderer.md` for Phase 8's (core owns everything that is
+not backend-specific, `RenderFrame` as a structural contract, jitter seeded from the stroke id,
+geometric hit-testing, the idempotent frame diff, a text-free pixel baseline, headless Konva).

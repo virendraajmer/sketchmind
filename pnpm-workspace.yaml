@@ -4,3 +4,11 @@ packages:
   # Root-level contract, integration and system tests spanning several packages
   # (Volume 11). Unit tests stay in packages/<name>/tests/.
   - "tests"
+
+# pnpm 10 blocks install scripts unless a package is listed here. `canvas` is the
+# only native module in the workspace: it exists so Konva can rasterise under Node
+# in tests (Phase 8 D-9), and it is a devDependency that never reaches a bundle.
+onlyBuiltDependencies:
+  - esbuild
+  - unrs-resolver
+  - canvas
