@@ -238,32 +238,69 @@ The session's single `AbortController` covers repair turns, so cancellation sema
 
 ## Gating
 
-### The vision provider is resolved independently of the session provider
+### Two model roles, independently resolved
 
 Critique needs a model that accepts text **and** images. The model driving the session may not be
-one, and may never be one — so the two are separate resolutions through the same registry, not one
-provider used twice:
+one, and may never be one. So the system resolves two *roles* rather than one provider:
+
+| Role | Used by | Needs |
+|---|---|---|
+| `text` | The session agent, the repair turn, the client agent's own reasoning | Tool calling |
+| `vision` | `critiqueImage` on the critique route, only | Text + image input |
+
+Each role resolves independently to **a provider and a model**. Setting neither role variable makes
+them the same object, so the common case — one model doing both — costs no configuration:
 
 ```ts
 // apps/api/src/provider.ts
-export function resolveVisionProvider(
+export type ProviderRole = "text" | "vision";
+
+export function resolveRoleProvider(
+  role: ProviderRole,
   env: NodeJS.ProcessEnv = process.env,
 ): LLMProvider | undefined {
-  const id = env["SKETCHMIND_VISION_PROVIDER"]?.trim() || env[PROVIDER_ENV_VAR]?.trim();
+  const prefix = role === "vision" ? "SKETCHMIND_VISION" : "SKETCHMIND_TEXT";
+  const id = env[`${prefix}_PROVIDER`]?.trim() || env[PROVIDER_ENV_VAR]?.trim();
   if (!id) return undefined;
-  const provider = createProviderFromEnv(buildProviderRegistry(), { ...env, [PROVIDER_ENV_VAR]: id });
-  return provider.capabilities.vision ? provider : undefined;
+
+  const model = env[`${prefix}_MODEL`]?.trim();
+  const provider = buildProviderRegistry().create(id, env, model ? { model } : {});
+
+  return role === "vision" && !provider.capabilities.vision ? undefined : provider;
 }
 ```
 
-`SKETCHMIND_VISION_PROVIDER` names any id in the registry and falls back to the session provider
-when unset. So a deployment can run its session on a text-only Azure deployment and its critique on
-Anthropic, or on whatever adapter is added later, by setting one variable. Adding a vision-capable
-provider is still "one new `llm-provider-*` package plus one config value" — this phase introduces
-no second rule.
+When both roles resolve to the same id and no model override differs, the two calls return
+equivalent providers and the composition root reuses one instance — same model for both purposes,
+one object, no duplicate client.
 
-The critique route holds the vision provider; the session holds the session provider. Neither
-knows the other's id.
+### The model override mechanism
+
+`ProviderFactory` gains an optional second argument, and `ProviderRegistry.create` forwards it:
+
+```ts
+export interface ProviderOptions {
+  /** Overrides the model/deployment the adapter would otherwise take from env. */
+  readonly model?: string;
+}
+export type ProviderFactory = (env: ProviderEnv, options?: ProviderOptions) => LLMProvider;
+```
+
+This is deliberately the *only* addition to the provider abstraction in this phase, and it is
+additive — existing factories ignoring the argument keep working. Each adapter applies the override
+to whatever its own model concept is (`AZURE_OPENAI_DEPLOYMENT`, `ANTHROPIC_MODEL`), so vendor
+variable names stay inside their packages and `apps/api` never learns them. `FakeProvider` honours
+it too, which is what makes the split testable without credentials.
+
+An adapter must report capabilities **for the model it was actually constructed with**. For the
+Azure adapter, `AZURE_OPENAI_VISION_DEPLOYMENT` becomes the default model for the `vision` role, and
+a provider constructed for that role reports `vision: true`; the same adapter constructed for the
+`text` role on `AZURE_OPENAI_DEPLOYMENT` reports whatever that deployment supports. One adapter,
+two instances, honest flags on each.
+
+The critique route holds the vision-role provider; the session holds the text-role provider.
+Neither knows the other's id or model, and adding a vision-capable provider later is still "one new
+`llm-provider-*` package plus one config value".
 
 ### The gate
 
@@ -312,7 +349,38 @@ All of it lands on `ApiConfig.vision`, read once in `apps/api/src/config.ts` —
 |---|---|---|
 | `SKETCHMIND_GEOMETRIC_CRITIQUE` | `on` | Tier 1 master switch |
 | `SKETCHMIND_VISION_MODE` | `off` | Tier 2 switch: `off` \| `auto` \| `on` |
-| `SKETCHMIND_VISION_PROVIDER` | *(session provider)* | Registry id of the provider used for image critique |
+| `SKETCHMIND_LLM_PROVIDER` | — | Existing. The provider both roles fall back to |
+| `SKETCHMIND_TEXT_PROVIDER` | *(falls back)* | Registry id for the `text` role |
+| `SKETCHMIND_TEXT_MODEL` | *(adapter's own)* | Model/deployment override for the `text` role |
+| `SKETCHMIND_VISION_PROVIDER` | *(falls back)* | Registry id for the `vision` role |
+| `SKETCHMIND_VISION_MODEL` | *(adapter's own)* | Model/deployment override for the `vision` role |
+
+The two roles are fully independent — either may name any registered provider and any model, and
+they need not agree on either:
+
+```sh
+# One model, both roles. Nothing to set beyond what already exists.
+SKETCHMIND_LLM_PROVIDER=anthropic
+
+# Same provider, two deployments.
+SKETCHMIND_LLM_PROVIDER=azure-openai
+SKETCHMIND_TEXT_MODEL=gpt-4o-mini
+SKETCHMIND_VISION_MODEL=gpt-4o
+
+# Different providers entirely.
+SKETCHMIND_TEXT_PROVIDER=azure-openai
+SKETCHMIND_VISION_PROVIDER=anthropic
+
+# Different providers and explicit models on each.
+SKETCHMIND_TEXT_PROVIDER=azure-openai
+SKETCHMIND_TEXT_MODEL=gpt-4o-mini
+SKETCHMIND_VISION_PROVIDER=anthropic
+SKETCHMIND_VISION_MODEL=claude-sonnet-5
+```
+
+Nothing constrains the pairing. The `vision` role's only requirement is that whatever it resolves
+to reports `capabilities.vision`; the `text` role's only requirement is `capabilities.toolCalling`.
+Neither role knows the other exists.
 | `SKETCHMIND_VISION_MAX_ROUNDS` | `2` | Client critique rounds per session |
 | `SKETCHMIND_VISION_MAX_IMAGE_BYTES` | `4_000_000` | Upload cap on the critique route |
 | `SKETCHMIND_REPAIR_MAX_ROUNDS` | `2` | Repair turns per session, both tiers combined |
@@ -349,7 +417,9 @@ provider id — the gate would read identically if Azure were removed from the r
 | Vision-off | Client registry contains no `capture_canvas`/`critique_canvas`; no `completeWithImages` call is made; no image bytes are produced. Asserted in code, not by configuration |
 | Vision-on with `FakeProvider` | Setting the config value enables tier 2 with **no code change** |
 | Provider independence | A `FakeProvider` registered under two different ids, one with `vision: true`, drives the whole tier-2 path identically. A grep over `agent-vision`, the critique route and `apps/studio` finds no vendor name, no provider id and no `AZURE_*` variable |
-| Split providers | `SKETCHMIND_VISION_PROVIDER` pointing at a different registry id than the session provider is honoured; the session provider's `completeWithImages` is never called |
+| Role matrix | All four combinations resolve correctly: same provider + same model; same provider + two models; two providers; two providers + two models. Driven by `FakeProvider` registered under several ids, no credentials |
+| Role isolation | With split roles, the text-role provider's `completeWithImages` is never called and the vision-role provider's `completeWithTools` is never called |
+| Model override | `ProviderFactory`'s `options.model` overrides the adapter's env-derived model in every adapter, and omitting it preserves current behaviour exactly |
 | `auto` mode | With `mode=auto` and a non-vision provider, the tier stays inert; swapping in a vision-capable provider turns it on with no other change |
 | `critiqueImage` parsing | Malformed model output becomes a `ValidationResult` failure, not a throw |
 | Route validation | Oversized and malformed uploads are rejected, matching `/api/agent/llm`'s discipline |
