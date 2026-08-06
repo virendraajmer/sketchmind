@@ -8,6 +8,6 @@ import { defineConfig } from "vitest/config";
  */
 export default defineConfig({
   test: {
-    setupFiles: ["./support/headless.ts"],
+    setupFiles: ["./tests/support/headless.ts"],
   },
 });

@@ -12,6 +12,7 @@
     "@sketchmind/agent-core": "workspace:*",
     "@sketchmind/agent-memory": "workspace:*",
     "@sketchmind/agent-tools-reasoning": "workspace:*",
+    "@sketchmind/agent-vision": "workspace:*",
     "@sketchmind/constraint-engine": "workspace:*",
     "@sketchmind/diagram-ast": "workspace:*",
     "@sketchmind/export-engine": "workspace:*",
