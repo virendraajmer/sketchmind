@@ -51,3 +51,42 @@ export function resolveProvider(env: NodeJS.ProcessEnv = process.env): LLMProvid
   }
   return createProviderFromEnv(buildProviderRegistry(), env);
 }
+
+export type ProviderRole = "text" | "vision";
+
+/**
+ * Resolve one model role.
+ *
+ * The two roles are fully independent: either may name any registered provider
+ * and any model, and they need not agree on either. Setting neither leaves both
+ * on `SKETCHMIND_LLM_PROVIDER`, which is the common case -- one model doing both
+ * jobs -- and costs no configuration at all.
+ *
+ * The vision role returns `undefined` rather than an unusable provider when the
+ * resolved model cannot see. That is what makes the tier *inert* when
+ * misconfigured instead of failing on the first upload, and it is read from
+ * `capabilities.vision`, never from a provider id.
+ */
+export function resolveRoleProvider(
+  role: ProviderRole,
+  env: NodeJS.ProcessEnv = process.env,
+): LLMProvider | undefined {
+  const prefix = role === "vision" ? "SKETCHMIND_VISION" : "SKETCHMIND_TEXT";
+  const id = env[`${prefix}_PROVIDER`]?.trim() || env[PROVIDER_ENV_VAR]?.trim();
+  if (!id) return undefined;
+
+  const model = env[`${prefix}_MODEL`]?.trim();
+
+  let provider: LLMProvider;
+  try {
+    provider = buildProviderRegistry().create(id, env, model ? { model } : {});
+  } catch {
+    // An unknown id or missing adapter variables leave the role unresolved. The
+    // text role's absence is already handled by `resolveProvider`'s fake; the
+    // vision role's absence simply keeps the tier inert.
+    return undefined;
+  }
+
+  if (role === "vision" && !provider.capabilities.vision) return undefined;
+  return provider;
+}
