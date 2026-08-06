@@ -34,3 +34,15 @@ export {
 export { createVisionTools, type VisionToolsOptions } from "./tools-server.js";
 
 export { critiqueImage, type CritiqueImageInput } from "./internal/critique-image.js";
+
+export {
+  VisionWorkspace,
+  createClientVisionTools,
+  type ClientVisionToolsOptions,
+} from "./tools-client.js";
+
+export {
+  runVisionAgent,
+  type RunVisionAgentOptions,
+  type VisionAgentResult,
+} from "./client-agent.js";
