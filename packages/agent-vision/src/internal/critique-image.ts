@@ -23,6 +23,7 @@ import {
   fail,
   makeError,
   ok,
+  parseWith,
   type CritiqueFinding,
   type ValidationResult,
 } from "@sketchmind/shared-types";
@@ -117,17 +118,18 @@ export async function critiqueImage(
     return problem("CRITIQUE_UNPARSEABLE", "The critique model's JSON did not parse.");
   }
 
-  const reply = ModelReplySchema.safeParse(parsedJson);
-  if (!reply.success) {
-    return problem(
-      "CRITIQUE_INVALID",
-      `The critique model's findings did not match the expected shape: ` +
-        reply.error.issues.map((i) => i.message).join("; "),
-    );
-  }
+  // Uses the repo-wide convention (`parseWith` / `errorsFromZod`) rather than a
+  // hand-rolled `safeParse`, so a schema-invalid reply comes back as one
+  // `SketchMindError` per issue, each with its own `path` -- "finding[2].severity
+  // is invalid" is something the agent can act on; a single collapsed string
+  // is not. `errorsFromZod` hardcodes `SCHEMA_INVALID` as the code, which is the
+  // convention every other schema-validating package in this repo follows, so
+  // that code is kept here too rather than inventing `CRITIQUE_INVALID`.
+  const reply = parseWith(ModelReplySchema, parsedJson, { package: PACKAGE, stage: "render" });
+  if (!reply.ok) return fail(reply.errors);
 
   return ok(
-    reply.data.findings.map((f, index) => ({
+    reply.value.findings.map((f, index) => ({
       ...f,
       id: `visual:${index}:${f.check}`,
       tier: "visual" as const,
