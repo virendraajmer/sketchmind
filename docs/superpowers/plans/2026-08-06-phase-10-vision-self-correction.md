@@ -3301,9 +3301,21 @@ describe("runVisionAgent", () => {
     expect(provider.calls).toHaveLength(0);
   });
 
-  it("does not exceed its round budget", async () => {
-    const result = await runVisionAgent(options({ maxRounds: 2 }) as never);
-    expect(result.rounds).toBeLessThanOrEqual(2);
+  it("stops at its step budget rather than looping", async () => {
+    // A provider that always asks for another capture. Without a budget the
+    // loop would never end, so this asserts the budget is what stops it.
+    const provider = new FakeProvider({
+      responses: ["capturing"],
+      toolCalls: Array.from({ length: 20 }, (_, i) => [
+        { id: `c${i}`, name: "capture_canvas", arguments: {} },
+      ]),
+    });
+    const capture = vi.fn(async () => ok(image));
+
+    const result = await runVisionAgent(options({ provider, capture, maxSteps: 3 }) as never);
+
+    expect(capture.mock.calls.length).toBeLessThanOrEqual(3);
+    expect(result.stopReason).toBeTruthy();
   });
 
   it("surfaces a capture failure without throwing", async () => {
@@ -3707,6 +3719,19 @@ export interface StartVisionAgentOptions {
   readonly apiBase?: string;
 }
 
+/**
+ * Chunked, because `String.fromCharCode(...bytes)` spreads every byte onto the
+ * call stack and a real board PNG is hundreds of kilobytes -- which overflows it.
+ */
+function toBase64(data: Uint8Array): string {
+  const CHUNK = 0x8000;
+  let binary = "";
+  for (let i = 0; i < data.length; i += CHUNK) {
+    binary += String.fromCharCode(...data.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+}
+
 export async function startVisionAgent(options: StartVisionAgentOptions): Promise<void> {
   if (!options.visionEnabled) return;
 
@@ -3730,7 +3755,7 @@ export async function startVisionAgent(options: StartVisionAgentOptions): Promis
           mimeType: image.mimeType,
           width: image.width,
           height: image.height,
-          base64: btoa(String.fromCharCode(...image.data)),
+          base64: toBase64(image.data),
         }),
         signal: options.signal,
       });
