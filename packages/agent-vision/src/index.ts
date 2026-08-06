@@ -32,3 +32,5 @@ export {
 } from "./internal/checks.js";
 
 export { createVisionTools, type VisionToolsOptions } from "./tools-server.js";
+
+export { critiqueImage, type CritiqueImageInput } from "./internal/critique-image.js";
