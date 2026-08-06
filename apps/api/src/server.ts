@@ -8,7 +8,7 @@ import { registerSessions } from "./routes/sessions.js";
 import { registerVisionRoute } from "./routes/vision.js";
 import { SessionManager } from "./session/manager.js";
 import { loadConfig, type ApiConfig } from "./config.js";
-import { resolveProvider, resolveRoleProvider } from "./provider.js";
+import { isVisualCritiqueEnabled, resolveRoleProvider, resolveSessionProvider } from "./provider.js";
 
 /**
  * The composition root.
@@ -33,11 +33,21 @@ export interface SketchMindServer {
   readonly app: FastifyInstance;
   readonly config: ApiConfig;
   readonly sessions: SessionManager;
+  /**
+   * The session agent's provider, exposed so what the composition root actually
+   * resolved is observable -- a role that resolves correctly in isolation but is
+   * never wired in is exactly the failure this phase's review found.
+   */
+  readonly provider: LLMProvider;
 }
 
 export async function buildServer(options: ServerOptions = {}): Promise<SketchMindServer> {
   const config = options.config ?? loadConfig();
-  const provider = options.provider ?? resolveProvider();
+  // The text role first: a deployment that set SKETCHMIND_TEXT_PROVIDER /
+  // SKETCHMIND_TEXT_MODEL means the session to run on it, and the two roles are
+  // documented as independently resolved. `resolveSessionProvider` falls back to
+  // `resolveProvider` (SKETCHMIND_LLM_PROVIDER, then the explanatory fake).
+  const provider = options.provider ?? resolveSessionProvider();
   const store = options.store ?? new FileStore({ path: config.memoryPath });
   const sessions = new SessionManager();
 
@@ -48,7 +58,7 @@ export async function buildServer(options: ServerOptions = {}): Promise<SketchMi
   await app.register(cors, { origin: config.webOrigin });
 
   const visionProvider = resolveRoleProvider("vision");
-  const visionEnabled = config.vision.mode !== "off" && visionProvider !== undefined;
+  const visionEnabled = isVisualCritiqueEnabled(config.vision.mode, visionProvider);
 
   registerHealth(app);
   registerSessions(app, { provider, store, config, sessions, visionEnabled });
@@ -71,7 +81,7 @@ export async function buildServer(options: ServerOptions = {}): Promise<SketchMi
   // in-flight provider call to be reaped by a timeout rather than cancelled.
   app.addHook("onClose", async () => sessions.cancelAll());
 
-  return { app, config, sessions };
+  return { app, config, sessions, provider };
 }
 
 if (process.env["NODE_ENV"] !== "test") {

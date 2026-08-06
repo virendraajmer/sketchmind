@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { critiqueGeometry } from "@sketchmind/agent-vision";
 import { FakeProvider } from "@sketchmind/llm-provider";
 import { loadConfig } from "../apps/api/src/config.js";
+import { isVisualCritiqueEnabled } from "../apps/api/src/provider.js";
 import type { DiagramAST, LayoutModel } from "@sketchmind/shared-types";
 
 const ast = { objects: [], relationships: [] } as unknown as DiagramAST;
@@ -104,21 +105,38 @@ describe("acceptance: vision off means no image anywhere", () => {
   });
 });
 
+/**
+ * These call the *real* gate -- `isVisualCritiqueEnabled`, the one function
+ * `apps/api/src/server.ts` and `apps/api/src/routes/vision.ts` both use -- rather
+ * than retyping its boolean expression. A locally re-typed expression passes
+ * whatever production does, which is precisely how a documented term goes
+ * missing from the shipped gate without a test noticing.
+ */
 describe("acceptance: enabling the tier is configuration, not code", () => {
   it("turns on with mode=auto and a vision-capable provider", () => {
     const config = loadConfig({ SKETCHMIND_VISION_MODE: "auto" });
     const provider = new FakeProvider({ capabilities: { vision: true } });
 
-    const enabled = config.vision.mode !== "off" && provider.capabilities.vision;
-    expect(enabled).toBe(true);
+    expect(isVisualCritiqueEnabled(config.vision.mode, provider)).toBe(true);
   });
 
   it("stays off with mode=auto and a text-only provider", () => {
     const config = loadConfig({ SKETCHMIND_VISION_MODE: "auto" });
     const provider = new FakeProvider({ capabilities: { vision: false } });
 
-    const enabled = config.vision.mode !== "off" && provider.capabilities.vision;
-    expect(enabled).toBe(false);
+    expect(isVisualCritiqueEnabled(config.vision.mode, provider)).toBe(false);
+  });
+
+  it("stays off with mode=off however capable the provider is", () => {
+    const config = loadConfig({});
+    const provider = new FakeProvider({ capabilities: { vision: true } });
+
+    expect(isVisualCritiqueEnabled(config.vision.mode, provider)).toBe(false);
+  });
+
+  it("stays off when no vision-role provider resolved at all", () => {
+    const config = loadConfig({ SKETCHMIND_VISION_MODE: "on" });
+    expect(isVisualCritiqueEnabled(config.vision.mode, undefined)).toBe(false);
   });
 });
 

@@ -21,6 +21,7 @@ import type { SketchMindError } from "@sketchmind/shared-types";
 import { LLMProviderError, ProviderErrorCode, type LLMProvider } from "@sketchmind/llm-provider";
 import type { ApiConfig } from "../config.js";
 import type { SessionManager } from "../session/manager.js";
+import { isVisualCritiqueEnabled } from "../provider.js";
 
 const RequestSchema = z.object({
   sessionId: z.string().min(1),
@@ -62,10 +63,16 @@ function isTransportFailure(errors: readonly SketchMindError[]): boolean {
 
 export function registerVisionRoute(app: FastifyInstance, options: VisionRouteOptions): void {
   const { provider, config, sessions } = options;
-  const enabled = config.vision.mode !== "off" && provider !== undefined;
+  // One gate, shared with `server.ts`'s `visionEnabled` (which is what the
+  // browser is told on `SessionStarted`). Two independent copies of the same
+  // boolean is how a route ends up open while the client thinks it is shut.
+  const enabled = isVisualCritiqueEnabled(config.vision.mode, provider);
 
   app.post("/api/agent/vision-critique", async (request, reply) => {
-    if (!enabled) {
+    // `enabled` is the gate. The `!provider` half is TypeScript's narrowing, not
+    // a second gate: `isVisualCritiqueEnabled` already implies it, and the
+    // compiler cannot see through the helper to know that.
+    if (!enabled || !provider) {
       return reply.code(503).send({
         reason:
           config.vision.mode === "off"

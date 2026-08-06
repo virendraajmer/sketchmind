@@ -20,6 +20,7 @@ import {
 } from "@sketchmind/llm-provider";
 import { registerAzureOpenAI } from "@sketchmind/llm-provider-azure-openai";
 import { registerAnthropic } from "@sketchmind/llm-provider-anthropic";
+import type { VisionMode } from "./config.js";
 
 export function buildProviderRegistry(): ProviderRegistry {
   const registry = new ProviderRegistry();
@@ -62,10 +63,16 @@ export type ProviderRole = "text" | "vision";
  * on `SKETCHMIND_LLM_PROVIDER`, which is the common case -- one model doing both
  * jobs -- and costs no configuration at all.
  *
- * The vision role returns `undefined` rather than an unusable provider when the
- * resolved model cannot see. That is what makes the tier *inert* when
- * misconfigured instead of failing on the first upload, and it is read from
- * `capabilities.vision`, never from a provider id.
+ * Either role returns `undefined` rather than an unusable provider when the
+ * resolved model lacks the one capability that role exists to use -- `vision`
+ * for the vision role, `toolCalling` for the text role (design spec, "Provider
+ * independence": *"the `vision` role's only requirement is that whatever it
+ * resolves to reports `capabilities.vision`; the `text` role's only requirement
+ * is `capabilities.toolCalling`"*). That is what makes the visual tier *inert*
+ * when misconfigured instead of failing on the first upload, and what makes an
+ * unusable text role fall back to `resolveProvider`'s explanatory fake instead
+ * of throwing on the session's first model turn. Both are read from
+ * `capabilities`, never from a provider id.
  */
 export function resolveRoleProvider(
   role: ProviderRole,
@@ -88,5 +95,49 @@ export function resolveRoleProvider(
   }
 
   if (role === "vision" && !provider.capabilities.vision) return undefined;
+  if (role === "text" && !provider.capabilities.toolCalling) return undefined;
   return provider;
+}
+
+/**
+ * The provider the session agent runs on.
+ *
+ * This is the seam the composition root actually calls, and it exists so the
+ * `text` role is not documented-but-dead: `SKETCHMIND_TEXT_PROVIDER` /
+ * `SKETCHMIND_TEXT_MODEL` steer the session, and `resolveProvider` remains the
+ * fallback for the (common) case where only `SKETCHMIND_LLM_PROVIDER` is set,
+ * as well as the source of the explanatory `FakeProvider` when nothing is
+ * configured at all.
+ */
+export function resolveSessionProvider(env: NodeJS.ProcessEnv = process.env): LLMProvider {
+  return resolveRoleProvider("text", env) ?? resolveProvider(env);
+}
+
+/**
+ * The tier-2 gate, in one place.
+ *
+ * The design spec writes it as four terms:
+ *
+ * ```
+ * mode !== "off" && visionProvider resolved
+ *   && renderer.capabilities.captureImage && renderer.capabilities.raster
+ * ```
+ *
+ * Only the first two are implementable today: `renderer-core`'s capability
+ * interface has no `captureImage` or `raster` flags yet, and adding them is a
+ * renderer-layer change outside Phase 10's diff. They are **not** silently
+ * dropped -- they are a tracked follow-up, and when they land they belong here,
+ * as extra terms on this expression, not as a fourth copy of the gate at a
+ * fourth call site.
+ *
+ * `capabilities.vision` is re-checked rather than assumed: `resolveRoleProvider`
+ * already guarantees it for anything it returns (so this changes nothing at the
+ * composition root), but it makes the gate total for any caller -- including a
+ * test -- that hands over a provider it resolved some other way.
+ */
+export function isVisualCritiqueEnabled(
+  mode: VisionMode,
+  visionProvider: LLMProvider | undefined,
+): boolean {
+  return mode !== "off" && visionProvider !== undefined && visionProvider.capabilities.vision;
 }
