@@ -20,6 +20,15 @@ import type {
 
 const API = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:3001";
 
+/** How long to wait for the stream to open before treating the server as unreachable. */
+const CONNECT_TIMEOUT_MS = 10_000;
+
+function describeNetworkError(error: unknown): string {
+  return error instanceof Error
+    ? `Could not reach the server: ${error.message}`
+    : "Could not reach the server.";
+}
+
 export type SessionPhase = "idle" | "thinking" | "drawing" | "done" | "failed" | "cancelled";
 
 export interface SessionState {
@@ -119,24 +128,51 @@ export function useSession(): Session {
       close();
       setState({ ...IDLE, phase: "thinking" });
 
-      const response = await fetch(`${API}/api/sessions`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ userInput }),
-      });
+      let response: Response;
+      try {
+        response = await fetch(`${API}/api/sessions`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ userInput }),
+        });
+      } catch (error) {
+        setState({ ...IDLE, phase: "failed", error: describeNetworkError(error) });
+        return;
+      }
 
       if (!response.ok) {
         setState({ ...IDLE, phase: "failed", error: `The server refused the request (${response.status}).` });
         return;
       }
 
-      const { sessionId: id } = (await response.json()) as { sessionId: string };
+      let id: string;
+      try {
+        ({ sessionId: id } = (await response.json()) as { sessionId: string });
+      } catch {
+        setState({ ...IDLE, phase: "failed", error: "The server's response could not be read." });
+        return;
+      }
       sessionId.current = id;
 
       const stream = new EventSource(`${API}/api/sessions/${id}/stream`);
       source.current = stream;
 
+      // A server that never answers (down, wrong URL, blocked by CORS) leaves a
+      // native EventSource silently retrying forever with no error the app can
+      // see. Without a bound here the UI would say "Thinking..." indefinitely.
+      const connectTimeout = setTimeout(() => {
+        if (stream.readyState !== EventSource.OPEN) {
+          close();
+          setState((current) => ({
+            ...current,
+            phase: "failed",
+            error: "The server did not respond in time.",
+          }));
+        }
+      }, CONNECT_TIMEOUT_MS);
+
       stream.onmessage = (message: MessageEvent<string>) => {
+        clearTimeout(connectTimeout);
         const decoded = decodeServerEvent(`data: ${message.data}\n\n`);
         if (!decoded.ok) return;
         setState((current) => reduce(current, decoded.value));
@@ -145,6 +181,7 @@ export function useSession(): Session {
 
       stream.onerror = () => {
         if (stream.readyState === EventSource.CLOSED) {
+          clearTimeout(connectTimeout);
           setState((current) =>
             current.phase === "done" || current.phase === "cancelled"
               ? current
@@ -159,11 +196,15 @@ export function useSession(): Session {
   const cancel = useCallback(async () => {
     const id = sessionId.current;
     if (!id) return;
-    await fetch(`${API}/api/sessions/${id}/cancel`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ reason: "cancelled by the viewer" }),
-    });
+    try {
+      await fetch(`${API}/api/sessions/${id}/cancel`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reason: "cancelled by the viewer" }),
+      });
+    } catch (error) {
+      setState((current) => ({ ...current, error: describeNetworkError(error) }));
+    }
   }, []);
 
   return { state, start, cancel };

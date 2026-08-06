@@ -229,6 +229,42 @@ describe("studio app page", () => {
     expect(calls.at(-1)?.[0]).toContain("/api/sessions/s1/cancel");
   });
 
+  it("reports a network failure instead of hanging on 'Thinking'", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("Failed to fetch");
+      }),
+    );
+
+    render(<App />);
+    await act(async () => {
+      screen.getByRole("button", { name: "Draw" }).click();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("status").textContent).toContain("Failed");
+    });
+    expect(screen.getByRole("alert").textContent).toContain("Could not reach the server");
+  });
+
+  it("surfaces a non-OK response from the session endpoint", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 503 })),
+    );
+
+    render(<App />);
+    await act(async () => {
+      screen.getByRole("button", { name: "Draw" }).click();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("status").textContent).toContain("Failed");
+    });
+    expect(screen.getByRole("alert").textContent).toContain("503");
+  });
+
   it("disables Draw while a session is running, and Cancel while it is not", async () => {
     render(<App />);
     expect(screen.getByRole("button", { name: "Cancel" })).toHaveProperty("disabled", true);
