@@ -1,13 +1,29 @@
 # @sketchmind/agent-vision
 
-Canvas capture, multimodal critique, and fix proposals so the agent sees its own work (AD-3).
+Self-correction: the agent inspects its own drawing and fixes what's wrong (AD-3).
+
+## Two critique tiers
+
+**Tier 1: Geometric critique.** Deterministic inspection of the `LayoutModel` and `StrokeAST` for object/label overlap, out-of-bounds elements, connector crossings, endpoints that don't meet their anchors, degenerate sizes, and whitespace imbalance. Zero token cost, instant, and catches most real errors.
+
+**Tier 2: Visual critique.** Multimodal model evaluation of the rendered diagram against the original request — catches issues only visible in the final image ("this doesn't read as a pulley system"). Gated on `SKETCHMIND_VISION_MODE` and a vision-capable provider. Off by default.
+
+Both emit the same structured `CritiqueFinding[]`, so the agent's repair loop is identical regardless of which tier(s) ran.
 
 ## Public API
 
-See `src/index.ts`. Internals live in `src/internal/` and are not importable
-from other packages (Volume 12).
+See `src/index.ts` for complete exports. The four entry points:
+
+- **`critiqueGeometry(input)`** — Run geometric checks on a diagram. Input: `{ ast, layout, strokes?, options? }`. Returns `CritiqueFinding[]`. Called by the repair loop and available as an agent tool.
+
+- **`critiqueImage(provider, image, request)`** — Multimodal critique of a rendered diagram. Server-side only. Returns a `ValidationResult<CritiqueFinding[]>`.
+
+- **`createVisionTools(options)`** — Expose critique to the server agent. Returns `ToolDefinition[]` for `critique_diagram`. Options include accessors for current AST/layout/strokes and geometric check configuration.
+
+- **`runVisionAgent(provider, image, findings)`** — Client-side vision agent that wakes after rendering completes or after a repair redraw settles. One loop per session, bounded budget, shared session memory. Decides whether to accept findings or report nothing.
 
 ## Dependency rules
 
-This package may depend only on its own layer or below. Direction is enforced
-by `scripts/check-layering.mjs`; run `pnpm run check:layering`.
+This package does not import `layout-engine`, `constraint-engine`, `stroke-planner`, or any other `core`-layer package. Critique must form its own independent opinion from the solver's output; sharing solver internals would make the two agree by construction, which defeats the purpose of a check.
+
+This package may depend only on its own layer (`agent`) or below (`core`, `renderer`, `provider`, `foundation`).

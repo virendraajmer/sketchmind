@@ -126,24 +126,26 @@ longer reads that field from `package.json`).
 
 ## Project status
 
-Phases 1–9 complete (repo foundation, core models, LLM provider abstraction, agent-core +
+Phases 1–10 complete (repo foundation, core models, LLM provider abstraction, agent-core +
 agent-memory, reasoning tools, constraint-engine + layout-engine, stroke-planner + stroke-runtime,
-renderer-core + renderer-konva + renderer-svg + export-engine, and the vertical slice:
-session-protocol + agent-tools-geometry + `apps/api` + `apps/web`). Phase 10 (`agent-vision` —
-vision self-correction, AD-3) is next. See the implementation plan doc
-for phase-by-phase scope and acceptance criteria before starting new package work, plus
-`docs/superpowers/plans/2026-08-05-phase-5-reasoning-tools.md` for the decisions Phase 5 settled
-(prompt templates as data, the geometry guard, `ReasoningWorkspace`),
+renderer-core + renderer-konva + renderer-svg + export-engine, the vertical slice: session-protocol
++ agent-tools-geometry + `apps/api` + `apps/web`, and vision self-correction with geometric and
+visual critique tiers and a client-side vision agent). Phase 11 (client agent full autonomy) is next.
+See the implementation plan doc for phase-by-phase scope and acceptance criteria before starting new
+package work, plus `docs/superpowers/plans/2026-08-05-phase-5-reasoning-tools.md` for the decisions
+Phase 5 settled (prompt templates as data, the geometry guard, `ReasoningWorkspace`),
 `docs/superpowers/plans/2026-08-05-phase-6-layout-engine.md` for Phase 6's (the `intersects` overlap
 exemption, the two-pass box-model solver, why collision resolution needs no ancestor exemption,
-perimeter-only anchor resolution), and
-`docs/superpowers/plans/2026-08-05-phase-7-stroke-engine.md` for Phase 7's (semantic five-phase
-drawing order rather than nearest-neighbour, the generator registry, exact points with jitter left
-to the renderer, the optimizer's object-coverage invariant, a timer-free runtime), and
-`docs/superpowers/plans/2026-08-05-phase-8-renderer.md` for Phase 8's (core owns everything that is
-not backend-specific, `RenderFrame` as a structural contract, jitter seeded from the stroke id,
-geometric hit-testing, the idempotent frame diff, a text-free pixel baseline, headless Konva), and
+perimeter-only anchor resolution), `docs/superpowers/plans/2026-08-05-phase-7-stroke-engine.md` for
+Phase 7's (semantic five-phase drawing order rather than nearest-neighbour, the generator registry,
+exact points with jitter left to the renderer, the optimizer's object-coverage invariant, a timer-free
+runtime), `docs/superpowers/plans/2026-08-05-phase-8-renderer.md` for Phase 8's (core owns everything
+that is not backend-specific, `RenderFrame` as a structural contract, jitter seeded from the stroke id,
+geometric hit-testing, the idempotent frame diff, a text-free pixel baseline, headless Konva),
 `docs/superpowers/plans/2026-08-05-phase-9-web-app.md` for Phase 9's (reusing `RuntimeEvent` as the
 wire contract, `DrawingFrame` becoming a real schema, why the geometry tools have no geometry guard
 and show the model no geometry, event buffering, one AbortController, the validating LLM proxy, and
-`pnpm check:bundle`).
+`pnpm check:bundle`), and `docs/superpowers/specs/2026-08-06-phase-10-vision-self-correction-design.md`
+for Phase 10's (the geometric and visual critique tiers, the three-way vision gating, why the vision
+agent belongs on the client and only critique happens server-side, provider-role resolution for
+vision-capable models).

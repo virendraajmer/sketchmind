@@ -1071,12 +1071,14 @@ Deterministic inspection of `LayoutModel` + `StrokeAST`: object/label overlap, o
 `captureImage` → multimodal critique against the original request. Gated on `AZURE_OPENAI_VISION_DEPLOYMENT` being set and the provider reporting `vision: true`. Blank means the tier never runs and nothing fails.
 
 **Acceptance:**
-- [ ] A seeded diagram with an obviously misplaced component (rope not meeting the pulley) is detected and corrected by **10a alone** — verified by comparing before/after `LayoutModel`.
-- [ ] A correct diagram passes critique **without** spurious changes (no oscillation on good output).
-- [ ] Correction rounds are budget-capped; the loop always terminates.
-- [ ] With `AZURE_OPENAI_VISION_DEPLOYMENT` blank, the full pipeline runs end to end with 10a only — no image is ever encoded, sent, or logged. Asserted by a test, not by configuration alone.
-- [ ] Setting the variable enables 10b with **no code change**.
-- [ ] Critique findings appear in the trace panel, tagged with which tier produced them.
+- [x] A seeded diagram with an obviously misplaced component (rope not meeting the pulley) is detected and corrected by **10a alone** — verified by comparing before/after `LayoutModel`.
+- [x] A correct diagram passes critique **without** spurious changes (no oscillation on good output).
+- [x] Correction rounds are budget-capped; the loop always terminates.
+- [x] With `AZURE_OPENAI_VISION_DEPLOYMENT` blank, the full pipeline runs end to end with 10a only — no image is ever encoded, sent, or logged. Asserted by a test, not by configuration alone.
+- [x] Setting the variable enables 10b with **no code change**.
+- [x] Critique findings appear in the trace panel, tagged with which tier produced them.
+
+**Spec revision:** The initial spec outlined 10b as a server-side pre-playback pass. Implementation moved the vision agent to the client locus and made critique multimodal-only, not a pre-playback gate — see `docs/superpowers/specs/2026-08-06-phase-10-vision-self-correction-design.md` for the reasoning and final architecture.
 
 ---
 
