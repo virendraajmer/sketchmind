@@ -29,7 +29,12 @@ export interface SessionRecord {
   /** Every event so far, replayed to each new subscriber. */
   readonly events: RuntimeEvent[];
   readonly listeners: Set<SessionListener>;
-  /** Set once a terminal event has been emitted. No more will follow. */
+  /**
+   * Set once a terminal event has been emitted: the session's own *run* is
+   * over. It does not mean no further events -- a repair turn started from
+   * `POST /findings` emits after it -- only that the run will not be cancelled
+   * or completed a second time.
+   */
   finished: boolean;
   /** The user's original words, needed to judge the image against the ask. */
   request: string;
@@ -100,13 +105,22 @@ export class SessionManager {
     }
   }
 
-  /** Replays what has already happened, then follows. Returns an unsubscribe. */
+  /**
+   * Replays what has already happened, then follows. Returns an unsubscribe.
+   *
+   * A finished session is subscribed to like any other. `finished` used to short
+   * out here, on the reasoning that a terminal event meant no more events could
+   * follow -- which stopped being true when `POST /api/sessions/:id/findings`
+   * made a repair turn startable long after `runSession` returned. Its events
+   * (`VisionCritique`, `AgentStep`, `DiagramASTReady`) are emitted through this
+   * same fan-out, so a subscriber that skipped the live listener would see the
+   * replay and then silence.
+   */
   subscribe(sessionId: string, listener: SessionListener): () => void {
     const record = this.sessions.get(sessionId);
     if (!record) return () => {};
 
     for (const event of record.events) listener(event);
-    if (record.finished) return () => {};
 
     record.listeners.add(listener);
     return () => record.listeners.delete(listener);

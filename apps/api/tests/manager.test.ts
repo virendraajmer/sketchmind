@@ -59,7 +59,7 @@ describe("SessionManager", () => {
     expect(alive).toEqual(["SessionStarted"]);
   });
 
-  it("does not subscribe to a finished session, only replays it", () => {
+  it("replays a finished session and still follows it", () => {
     const manager = new SessionManager();
     manager.create("s1");
     manager.emit("s1", started);
@@ -68,7 +68,13 @@ describe("SessionManager", () => {
     const seen: string[] = [];
     manager.subscribe("s1", (e) => seen.push(e.type));
     expect(seen).toEqual(["SessionStarted", "SessionCompleted"]);
-    expect(manager.get("s1")?.listeners.size).toBe(0);
+    expect(manager.get("s1")?.listeners.size).toBe(1);
+
+    // A terminal event ends the run, not the session's event stream: a repair
+    // turn from `POST /findings` emits after it, and a subscriber that was
+    // dropped at `finished` would never see it.
+    manager.emit("s1", event("VisionCritique", { tier: "visual", findings: [], accepted: true }));
+    expect(seen).toEqual(["SessionStarted", "SessionCompleted", "VisionCritique"]);
   });
 
   it("aborts the run when cancelled", () => {

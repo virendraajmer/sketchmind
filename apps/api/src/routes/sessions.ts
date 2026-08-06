@@ -83,7 +83,24 @@ export function registerSessions(app: FastifyInstance, options: SessionRoutesOpt
 
     const unsubscribe = sessions.subscribe(id, (event) => {
       reply.raw.write(encodeServerEvent(event));
-      if (TERMINAL.has(event.type)) reply.raw.end();
+
+      // A terminal event is the end of the *session's own run*, not necessarily
+      // the end of this session's events: with tier 2 on, the browser's vision
+      // agent only starts once `SessionCompleted` arrives, and the repair turn
+      // `POST /findings` triggers emits `VisionCritique`, `AgentStep` and
+      // possibly `DiagramASTReady` through this same stream afterwards. Ending
+      // the response here would send those nowhere -- and, worse, a native
+      // EventSource reads a server-ended response as a dropped connection and
+      // reconnects every ~3s, each reconnect replaying `SessionCompleted` and
+      // starting yet another vision agent.
+      //
+      // So the client owns the close when tier 2 is live (`useSession.ts` defers
+      // it until the vision agent settles, and closes immediately otherwise),
+      // and `request.raw.on("close")` below still frees the listener when it
+      // goes. With the tier off nothing can follow the terminal event, so the
+      // server ends it -- which is also what keeps `app.inject` able to read a
+      // whole stream to completion.
+      if (!visionEnabled && TERMINAL.has(event.type)) reply.raw.end();
     });
 
     // Fires when the tab closes or the client aborts. Without it, a browser
