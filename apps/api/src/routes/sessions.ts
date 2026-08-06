@@ -8,6 +8,7 @@
  */
 import type { FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
+import { z } from "zod";
 import {
   SSE_HEADERS,
   SSE_KEEPALIVE,
@@ -16,8 +17,10 @@ import {
 } from "@sketchmind/session-protocol";
 import type { MemoryStore } from "@sketchmind/agent-memory";
 import type { LLMProvider } from "@sketchmind/llm-provider";
+import { CritiqueFindingSchema } from "@sketchmind/shared-types";
 import type { ApiConfig } from "../config.js";
 import { SessionManager } from "../session/manager.js";
+import { runRepair } from "../session/repair.js";
 import { runSession } from "../session/run.js";
 
 export interface SessionRoutesOptions {
@@ -46,6 +49,7 @@ export function registerSessions(app: FastifyInstance, options: SessionRoutesOpt
       config,
       signal: record.controller.signal,
       emit: (event) => sessions.emit(sessionId, event),
+      record,
     }).catch((cause: unknown) => {
       // runSession reports its own failures as events. Reaching here means the
       // orchestration itself threw, which the viewer would otherwise experience
@@ -103,6 +107,37 @@ export function registerSessions(app: FastifyInstance, options: SessionRoutesOpt
       }
       sessions.cancel(request.params.id, request.body?.reason);
       return reply.code(204).send();
+    },
+  );
+
+  app.post<{ Params: { id: string }; Body: unknown }>(
+    "/api/sessions/:id/findings",
+    async (request, reply) => {
+      const record = sessions.get(request.params.id);
+      if (!record || !record.registry) return reply.code(404).send({ reason: "No such session." });
+
+      const parsed = z
+        .object({ findings: z.array(CritiqueFindingSchema).max(50) })
+        .safeParse(request.body);
+      if (!parsed.success) return reply.code(400).send({ errors: parsed.error.issues });
+
+      // 202: the repair is a background turn, and the client learns what
+      // happened from the event stream it is already reading. Catching here
+      // stops a rejected repair from becoming an unhandled promise rejection --
+      // runRepair reports its own failures as events, same as runSession.
+      void runRepair({
+        sessionId: record.sessionId,
+        findings: parsed.data.findings,
+        provider,
+        registry: record.registry,
+        config,
+        record,
+        emit: (event) => sessions.emit(record.sessionId, event),
+      }).catch((cause: unknown) => {
+        app.log.error({ err: cause, sessionId: record.sessionId }, "repair turn crashed");
+      });
+
+      return reply.code(202).send({ accepted: true });
     },
   );
 }

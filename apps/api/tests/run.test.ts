@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import { InMemoryStore } from "@sketchmind/agent-memory";
 import type { RuntimeEvent } from "@sketchmind/session-protocol";
 import { runSession } from "../src/session/run.js";
+import { SessionManager } from "../src/session/manager.js";
 import { DRAWS_A_PULLEY, DRAWS_NOTHING, pulleyProvider, testConfig } from "./support.js";
 
 interface Recorded {
@@ -23,6 +24,8 @@ async function record(options: {
   sleep?: (ms: number) => Promise<void>;
 } = {}): Promise<Recorded> {
   const events: RuntimeEvent[] = [];
+  const sessions = new SessionManager();
+  const record = sessions.create("s1", "Draw a movable pulley");
   await runSession({
     sessionId: "s1",
     userInput: "Draw a movable pulley",
@@ -32,6 +35,7 @@ async function record(options: {
     signal: options.signal ?? new AbortController().signal,
     emit: (event) => events.push(event),
     sleep: options.sleep ?? (async () => {}),
+    record,
   });
   return { events, types: events.map((event) => event.type) };
 }

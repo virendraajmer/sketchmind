@@ -16,6 +16,7 @@
  * in-flight model turn and an in-progress drawing with one call, and there is no
  * second flag that can disagree with it.
  */
+import type { ToolRegistry } from "@sketchmind/agent-core";
 import type { RuntimeEvent } from "@sketchmind/session-protocol";
 import type { CritiqueFinding } from "@sketchmind/shared-types";
 
@@ -39,6 +40,8 @@ export interface SessionRecord {
   repairRounds: number;
   /** Last round's findings, so an unchanged verdict does not re-trigger repair. */
   lastFindings: CritiqueFinding[];
+  /** Set once the run's registry exists, so a later repair turn can reuse it. */
+  registry?: ToolRegistry;
 }
 
 export class SessionManager {

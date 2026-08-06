@@ -29,6 +29,7 @@ import {
   memoryCatalog,
 } from "@sketchmind/agent-tools-reasoning";
 import { GeometryWorkspace, createGeometryTools } from "@sketchmind/agent-tools-geometry";
+import { createVisionTools, critiqueGeometry } from "@sketchmind/agent-vision";
 import type { LLMProvider } from "@sketchmind/llm-provider";
 import { createStrokeRuntime } from "@sketchmind/stroke-runtime";
 import {
@@ -40,7 +41,9 @@ import {
   type StrokeAST,
 } from "@sketchmind/shared-types";
 import type { ApiConfig } from "../config.js";
+import type { SessionRecord } from "./manager.js";
 import { sessionSystemPrompt } from "./prompt.js";
+import { runRepair } from "./repair.js";
 
 const PACKAGE = "@sketchmind/api";
 
@@ -52,6 +55,8 @@ export interface RunSessionOptions {
   readonly config: ApiConfig;
   readonly signal: AbortSignal;
   readonly emit: (event: RuntimeEvent) => void;
+  /** Where the automatic critique pass and a later repair turn keep state. */
+  readonly record: SessionRecord;
   /** Injected so tests advance playback without waiting in real time. */
   readonly sleep?: (ms: number) => Promise<void>;
   readonly now?: () => string;
@@ -78,6 +83,11 @@ export async function runSession(options: RunSessionOptions): Promise<void> {
   const registry = new ToolRegistry([
     ...createReasoningTools({ provider, workspace: reasoning, catalog: memoryCatalog(store, embedder) }),
     ...createGeometryTools({ workspace: geometry, getAst: () => reasoning.ast }),
+    ...createVisionTools({
+      getAst: () => reasoning.ast,
+      getLayout: () => geometry.layout,
+      getStrokes: () => geometry.strokeAST,
+    }),
     ...createMemoryTools({ store, embedder }),
   ]);
 
@@ -140,7 +150,36 @@ export async function runSession(options: RunSessionOptions): Promise<void> {
     return;
   }
 
-  await play({ ...options, strokes, sleep, now });
+  // The free tier runs on every diagram before a single stroke is drawn. This
+  // is the pass that makes "the agent checks its own work" true even with the
+  // image tier switched off, and it costs nothing to be sure of.
+  const layout = geometry.layout;
+  if (config.vision.geometric && reasoning.ast && layout) {
+    options.record.layoutSummary =
+      `${layout.nodes.length} objects (${layout.nodes.map((n) => n.objectId).join(", ")}), ` +
+      `${layout.connectors.length} connectors, ${layout.labels.length} labels`;
+
+    const findings = critiqueGeometry({ ast: reasoning.ast, layout, strokes });
+    if (findings.length > 0) {
+      await runRepair({
+        sessionId,
+        findings,
+        provider,
+        registry,
+        config,
+        record: options.record,
+        emit: options.emit,
+      });
+    }
+  }
+
+  // Repair may have replaced the plan; draw whatever the workspace now holds.
+  const finalStrokes = geometry.strokeAST ?? strokes;
+
+  // Handed to the client agent and to a later repair turn.
+  options.record.registry = registry;
+
+  await play({ ...options, strokes: finalStrokes, sleep, now });
 }
 
 interface PlayOptions {
