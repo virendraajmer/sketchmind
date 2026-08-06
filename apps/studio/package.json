@@ -12,6 +12,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@sketchmind/agent-vision": "workspace:*",
+    "@sketchmind/llm-provider": "workspace:*",
     "@sketchmind/renderer-core": "workspace:*",
     "@sketchmind/renderer-konva": "workspace:*",
     "@sketchmind/session-protocol": "workspace:*",

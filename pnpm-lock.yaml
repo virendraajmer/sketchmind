@@ -90,6 +90,12 @@ importers:
 
   apps/studio:
     dependencies:
+      '@sketchmind/agent-vision':
+        specifier: workspace:*
+        version: link:../../packages/agent-vision
+      '@sketchmind/llm-provider':
+        specifier: workspace:*
+        version: link:../../packages/llm-provider
       '@sketchmind/renderer-core':
         specifier: workspace:*
         version: link:../../packages/renderer-core

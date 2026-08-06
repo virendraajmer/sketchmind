@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { createKonvaRenderer } from "@sketchmind/renderer-konva";
 import type { RendererAdapter } from "@sketchmind/renderer-core";
 import type { BoundingBox, DrawingFrame } from "@sketchmind/shared-types";
@@ -11,12 +11,26 @@ export interface WhiteboardProps {
   readonly height?: number;
 }
 
-export default function Whiteboard({
-  frame,
-  bounds,
-  width = 900,
-  height = 600,
-}: WhiteboardProps): React.JSX.Element {
+/**
+ * What the vision agent's capture closure needs from this component.
+ *
+ * `getBitmap` goes straight at the mounted `<canvas>` element rather than
+ * through `RendererAdapter.captureImage()`: that method already PNG-encodes
+ * synchronously on the main thread (Konva's `toDataURL`), which is exactly the
+ * cost Phase 10's capture worker exists to move off it. `createImageBitmap` on
+ * the raw canvas is a cheap copy, not an encode, so the worker in
+ * `src/workers/capture.worker.ts` does the encoding instead. Kept minimal and
+ * DOM-direct on purpose -- see Task 12's report for why this wasn't built as a
+ * new `renderer-core` capability.
+ */
+export interface WhiteboardHandle {
+  getBitmap(): Promise<ImageBitmap>;
+}
+
+function Whiteboard(
+  { frame, bounds, width = 900, height = 600 }: WhiteboardProps,
+  ref: React.ForwardedRef<WhiteboardHandle>,
+): React.JSX.Element {
   const wrapper = useRef<HTMLDivElement>(null);
   const mount = useRef<HTMLDivElement>(null);
   const adapter = useRef<RendererAdapter | null>(null);
@@ -74,6 +88,18 @@ export default function Whiteboard({
     if (adapter.current && frame) adapter.current.renderFrame(frame);
   }, [frame]);
 
+  useImperativeHandle(
+    ref,
+    () => ({
+      async getBitmap(): Promise<ImageBitmap> {
+        const canvasEl = mount.current?.querySelector("canvas");
+        if (!canvasEl) throw new Error("The whiteboard canvas is not mounted.");
+        return createImageBitmap(canvasEl);
+      },
+    }),
+    [],
+  );
+
   return (
     <div ref={wrapper} className="w-full" style={{ maxWidth: width }}>
       <div
@@ -98,3 +124,5 @@ export default function Whiteboard({
     </div>
   );
 }
+
+export default forwardRef(Whiteboard);

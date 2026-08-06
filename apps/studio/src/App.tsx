@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from "react";
-import Whiteboard from "./components/Whiteboard";
+import { useCallback, useRef, useState, type FormEvent } from "react";
+import Whiteboard, { type WhiteboardHandle } from "./components/Whiteboard";
 import { Inspector } from "./components/Inspector";
 import { TracePanel } from "./components/TracePanel";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -9,7 +9,12 @@ const BUSY = new Set(["thinking", "drawing"]);
 
 export default function App(): React.JSX.Element {
   const [prompt, setPrompt] = useState("Draw a movable pulley");
-  const { state, start, cancel } = useSession();
+  const whiteboard = useRef<WhiteboardHandle>(null);
+  const getBitmap = useCallback(async () => {
+    if (!whiteboard.current) throw new Error("The whiteboard is not mounted.");
+    return whiteboard.current.getBitmap();
+  }, []);
+  const { state, start, cancel } = useSession(getBitmap);
   const busy = BUSY.has(state.phase);
 
   const submit = (event: FormEvent): void => {
@@ -67,6 +72,7 @@ export default function App(): React.JSX.Element {
         <section className="min-[1100px]:row-span-2">
           <ErrorBoundary>
             <Whiteboard
+              ref={whiteboard}
               {...(state.frame ? { frame: state.frame } : {})}
               {...(state.bounds ? { bounds: state.bounds } : {})}
             />

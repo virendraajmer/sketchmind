@@ -17,6 +17,8 @@ import type {
   DiagramAST,
   DrawingFrame,
 } from "@sketchmind/shared-types";
+import { encodeCapture } from "../vision/captureClient.js";
+import { startVisionAgent } from "../vision/bootstrap.js";
 
 const API = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:3001";
 
@@ -42,14 +44,16 @@ export interface SessionState {
   readonly bounds?: BoundingBox;
   readonly strokesDrawn: number;
   readonly error?: string;
+  /** Carried from `SessionStarted` -- whether the vision agent may even try to run. */
+  readonly visionEnabled: boolean;
 }
 
-const IDLE: SessionState = { phase: "idle", steps: [], strokesDrawn: 0 };
+const IDLE: SessionState = { phase: "idle", steps: [], strokesDrawn: 0, visionEnabled: false };
 
 function reduce(state: SessionState, event: RuntimeEvent): SessionState {
   switch (event.type) {
     case "SessionStarted":
-      return { ...IDLE, phase: "thinking", sessionId: event.sessionId };
+      return { ...IDLE, phase: "thinking", sessionId: event.sessionId, visionEnabled: event.visionEnabled };
 
     case "AgentStep":
       return {
@@ -111,22 +115,63 @@ export interface Session {
   cancel: () => Promise<void>;
 }
 
-export function useSession(): Session {
+/**
+ * `getBitmap` is how the vision agent's capture tool reaches the rendered
+ * canvas -- see `WhiteboardHandle` in `components/Whiteboard.tsx`. Optional so
+ * this hook stays testable (and usable) without a live canvas at all: when it
+ * is absent, or the caller never wires a `Whiteboard` ref, capture simply fails
+ * and the agent reports nothing, which is a safe, silent outcome (Task 12).
+ */
+export function useSession(getBitmap?: () => Promise<ImageBitmap>): Session {
   const [state, setState] = useState<SessionState>(IDLE);
   const source = useRef<EventSource | null>(null);
   const sessionId = useRef<string | undefined>(undefined);
+  const visionController = useRef<AbortController | null>(null);
+
+  // A burst of `FrameUpdate`s (the runtime ticks far faster than the display
+  // refreshes) must cost one paint, not one `setState` each -- see Task 12's
+  // brief. Every other event type still applies immediately: they are rare and
+  // some (SessionCompleted, SessionFailed) gate behaviour that must not wait a
+  // frame.
+  const pendingFrame = useRef<RuntimeEvent | null>(null);
+  const raf = useRef<number | null>(null);
+
+  const flushFrame = useCallback(() => {
+    raf.current = null;
+    const next = pendingFrame.current;
+    pendingFrame.current = null;
+    if (next) setState((current) => reduce(current, next));
+  }, []);
+
+  const scheduleFrame = useCallback(
+    (event: RuntimeEvent) => {
+      pendingFrame.current = event;
+      if (raf.current !== null) return;
+      raf.current = requestAnimationFrame(flushFrame);
+    },
+    [flushFrame],
+  );
 
   const close = useCallback(() => {
     source.current?.close();
     source.current = null;
+    if (raf.current !== null) {
+      cancelAnimationFrame(raf.current);
+      raf.current = null;
+    }
+    pendingFrame.current = null;
   }, []);
 
   useEffect(() => close, [close]);
+  useEffect(() => () => visionController.current?.abort(), []);
 
   const start = useCallback(
     async (userInput: string) => {
       close();
       setState({ ...IDLE, phase: "thinking" });
+      visionController.current?.abort();
+      visionController.current = new AbortController();
+      const controller = visionController.current;
 
       let response: Response;
       try {
@@ -154,6 +199,12 @@ export function useSession(): Session {
       }
       sessionId.current = id;
 
+      // Captured locally rather than read back off `state`: the closures below
+      // run long after this call to `start` returned, so `state` here would
+      // still be whatever it was at call time (stale) -- the `SessionStarted`
+      // event is the only source of truth for this session's gate.
+      let visionEnabled = false;
+
       const stream = new EventSource(`${API}/api/sessions/${id}/stream`);
       source.current = stream;
 
@@ -175,8 +226,44 @@ export function useSession(): Session {
         clearTimeout(connectTimeout);
         const decoded = decodeServerEvent(`data: ${message.data}\n\n`);
         if (!decoded.ok) return;
-        setState((current) => reduce(current, decoded.value));
+
+        if (decoded.value.type === "SessionStarted") {
+          visionEnabled = decoded.value.visionEnabled;
+        }
+
+        if (decoded.value.type === "FrameUpdate") {
+          scheduleFrame(decoded.value);
+        } else {
+          setState((current) => reduce(current, decoded.value));
+        }
+
         if (TERMINAL.has(decoded.value.type)) close();
+
+        if (decoded.value.type === "SessionCompleted") {
+          // Fire-and-forget: a redraw comes from the event stream this session
+          // is already reading (`VisionCritique`, then a repair turn's own
+          // events), not from this promise settling.
+          void startVisionAgent({
+            sessionId: id,
+            request: userInput,
+            visionEnabled,
+            signal: controller.signal,
+            capture: async () => {
+              if (!getBitmap) {
+                return { ok: false, errors: [] };
+              }
+              const worker = new Worker(
+                new URL("../workers/capture.worker.ts", import.meta.url),
+                { type: "module" },
+              );
+              try {
+                return await encodeCapture({ worker, toBitmap: getBitmap });
+              } finally {
+                worker.terminate();
+              }
+            },
+          });
+        }
       };
 
       stream.onerror = () => {
@@ -190,7 +277,7 @@ export function useSession(): Session {
         }
       };
     },
-    [close],
+    [close, scheduleFrame, getBitmap],
   );
 
   const cancel = useCallback(async () => {
