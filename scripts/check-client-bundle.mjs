@@ -41,18 +41,25 @@ function* files(dir) {
   }
 }
 
-let scanned = 0;
-const violations = [];
+const missingDirs = [];
 
 try {
   for (const bundle of BUNDLES) {
-    if (!existsSync(bundle)) continue;
+    if (!existsSync(bundle)) {
+      missingDirs.push(bundle);
+      continue;
+    }
+    let scannedInBundle = 0;
     for (const file of files(bundle)) {
       scanned += 1;
+      scannedInBundle += 1;
       const content = readFileSync(file, "utf8");
       for (const { pattern, why } of FORBIDDEN) {
         if (pattern.test(content)) violations.push({ file, pattern: String(pattern), why });
       }
+    }
+    if (scannedInBundle === 0) {
+      missingDirs.push(`${bundle} (no bundle files found)`);
     }
   }
 } catch (error) {
@@ -60,9 +67,8 @@ try {
   process.exit(1);
 }
 
-// A scan that matched nothing because it found nothing to scan is not a pass.
-if (scanned === 0) {
-  console.error(`No bundle files found under ${BUNDLES.join(", ")}. Run \`pnpm build\` first.`);
+if (missingDirs.length > 0) {
+  console.error(`Missing target bundle directories:\n  - ${missingDirs.join("\n  - ")}\nRun \`pnpm build\` first.`);
   process.exit(1);
 }
 
