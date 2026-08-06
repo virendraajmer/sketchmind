@@ -41,6 +41,8 @@ function* files(dir) {
   }
 }
 
+let scanned = 0;
+const violations = [];
 const missingDirs = [];
 
 try {
