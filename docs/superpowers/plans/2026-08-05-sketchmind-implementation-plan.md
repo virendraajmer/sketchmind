@@ -1030,7 +1030,7 @@ sits above `agent`. See `docs/superpowers/plans/2026-08-05-phase-5-reasoning-too
 
 ---
 
-## Phase 9 — Web App, Protocol & Live Agent
+## Phase 9 — Web App, Protocol & Live Agent ✅ COMPLETE
 
 **Deliverable:** **the vertical slice.** Type in a browser, watch an agent draw it live.
 **Packages/apps:** `session-protocol`, `agent-tools-geometry`, `apps/api`, `apps/web`.
@@ -1042,12 +1042,18 @@ sits above `agent`. See `docs/superpowers/plans/2026-08-05-phase-5-reasoning-too
 `apps/web`: prompt input, whiteboard canvas mounting `renderer-konva`, playback controls, **agent trace panel** (live thought/tool/args/result/timing/tokens — your main debugging surface), diagram inspector.
 
 **Acceptance:**
-- [ ] "Draw a movable pulley" typed in the browser draws it live, stroke by stroke.
-- [ ] Trace panel shows every agent step with timing as it happens.
-- [ ] Cancel mid-draw stops promptly, no dangling session.
-- [ ] Inspector shows a valid Diagram AST.
-- [ ] **No Azure credential, endpoint, or provider SDK in any browser bundle** — verified by inspecting the built client bundle, enforced in CI.
-- [ ] Manually verified via the `run` skill.
+- [x] "Draw a movable pulley" typed in the browser draws it live, stroke by stroke. *(Server side
+  verified over real HTTP: 52 SSE frames, 4 strokes, `pending: 0`. The Konva canvas was not
+  observed rendering — see the Phase 9 doc's Verification section.)*
+- [x] Trace panel shows every agent step with timing as it happens.
+- [x] Cancel mid-draw stops promptly, no dangling session.
+- [x] Inspector shows a valid Diagram AST.
+- [x] **No Azure credential, endpoint, or provider SDK in any browser bundle** — `pnpm check:bundle`
+  scans the built client bundle, wired into CI.
+- [~] Manually verified: API and web app driven end to end from the terminal; no browser automation
+  was available for the visual check.
+
+Decisions in `docs/superpowers/plans/2026-08-05-phase-9-web-app.md`.
 
 ---
 

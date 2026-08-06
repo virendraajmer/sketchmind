@@ -48,3 +48,9 @@ jobs:
             exit 1
           fi
           echo "No provider SDK leaks."
+
+      # The grep above checks what was written; this checks what shipped. A
+      # transitive dependency or an inlined NEXT_PUBLIC_* value can put a
+      # credential in the browser without any import statement changing.
+      - name: Verify the browser bundle carries no credentials or provider SDK
+        run: pnpm run check:bundle

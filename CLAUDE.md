@@ -99,10 +99,20 @@ re-validated and authorized server-side — full autonomy on the client is never
 the layer model, viewport transform, jitter synthesis, tone resolution, hit-testing and
 stroke→geometry conversion all live in `renderer-core`, which is what makes the two backends draw
 the same picture rather than a similar one. Because `renderer` sits *below* `core`, a backend
-cannot import `stroke-runtime` — so `renderer-core` declares its own `RenderFrame` matching
-`DrawingFrame` structurally, and `tests/render-pipeline.test.ts` keeps the two in step. The
-viewport is the only place pixels enter the system: a pointer event goes through
-`viewport().toWorld()` before anything semantic reads it.
+cannot import `stroke-runtime`; `RenderFrame` and `DrawingFrame` were hand-written twins for that
+reason until Phase 9 put the frame on the wire and both became aliases of `DrawingFrameSchema` in
+`shared-types` — `tests/render-pipeline.test.ts` still asserts the assignment, now as a guard
+against either package reintroducing a local copy. The viewport is the only place pixels enter the
+system: a pointer event goes through `viewport().toWorld()` before anything semantic reads it.
+
+**The session is one agent run, streamed.** `apps/api` registers reasoning, geometry and memory
+tools into a single `ToolRegistry` and makes one `runAgent` call across all three — not a reasoning
+phase then a geometry phase, because AD-1 means the model decides which stages a request needs.
+Each step becomes a `RuntimeEvent` (the same union the stroke runtime emits; `session-protocol`
+re-exports it rather than declaring a wire twin) framed as SSE. Events are buffered per session, so
+a browser that opens the stream after the agent has started still sees the run from the beginning.
+One `AbortController` per session is the whole cancellation story: it reaches the provider call,
+every `ToolContext`, and the playback pump.
 
 **Module resolution:** `tsconfig.base.json` uses `NodeNext`/`NodeNext`, not `Bundler` — required
 so `dist/` is loadable by plain `node`, not just by a bundler-aware test runner. `apps/web`
@@ -116,10 +126,11 @@ longer reads that field from `package.json`).
 
 ## Project status
 
-Phases 1–8 complete (repo foundation, core models, LLM provider abstraction, agent-core +
+Phases 1–9 complete (repo foundation, core models, LLM provider abstraction, agent-core +
 agent-memory, reasoning tools, constraint-engine + layout-engine, stroke-planner + stroke-runtime,
-renderer-core + renderer-konva + renderer-svg + export-engine). Phase 9 (session-protocol,
-`apps/api`, `apps/web` — the vertical slice) is next. See the implementation plan doc
+renderer-core + renderer-konva + renderer-svg + export-engine, and the vertical slice:
+session-protocol + agent-tools-geometry + `apps/api` + `apps/web`). Phase 10 (`agent-vision` —
+vision self-correction, AD-3) is next. See the implementation plan doc
 for phase-by-phase scope and acceptance criteria before starting new package work, plus
 `docs/superpowers/plans/2026-08-05-phase-5-reasoning-tools.md` for the decisions Phase 5 settled
 (prompt templates as data, the geometry guard, `ReasoningWorkspace`),
@@ -131,4 +142,8 @@ drawing order rather than nearest-neighbour, the generator registry, exact point
 to the renderer, the optimizer's object-coverage invariant, a timer-free runtime), and
 `docs/superpowers/plans/2026-08-05-phase-8-renderer.md` for Phase 8's (core owns everything that is
 not backend-specific, `RenderFrame` as a structural contract, jitter seeded from the stroke id,
-geometric hit-testing, the idempotent frame diff, a text-free pixel baseline, headless Konva).
+geometric hit-testing, the idempotent frame diff, a text-free pixel baseline, headless Konva), and
+`docs/superpowers/plans/2026-08-05-phase-9-web-app.md` for Phase 9's (reusing `RuntimeEvent` as the
+wire contract, `DrawingFrame` becoming a real schema, why the geometry tools have no geometry guard
+and show the model no geometry, event buffering, one AbortController, the validating LLM proxy, and
+`pnpm check:bundle`).

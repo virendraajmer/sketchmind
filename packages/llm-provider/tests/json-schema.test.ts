@@ -101,6 +101,19 @@ function objectRootedSchemas(): Array<[string, z.ZodType]> {
  */
 const NEVER_MODEL_OUTPUT = new Set(["ToolSpecSchema"]);
 
+/**
+ * Schemas allowed to admit `null`, because they never travel through
+ * `decodeStrictOutput` and so the null-stripping premise below does not apply.
+ *
+ * `DrawingFrame.inProgress` is `null` when no stroke is mid-flight -- a real
+ * state, not an absent field, which is why it is not `undefined`. Nothing here
+ * risks a meaningful null being stripped: a frame is playback geometry, and no
+ * model may emit geometry at all (Global Constraints: AI boundaries), so it can
+ * never be a structured-output target. It reaches the browser as an SSE frame
+ * encoded with plain JSON, on a path the decoder is not on.
+ */
+const NULL_IS_NOT_ABSENCE = new Set(["DrawingFrameSchema"]);
+
 describe("toStrictJsonSchema", () => {
   const all = objectRootedSchemas();
   const schemas = all.filter(([name]) => !NEVER_MODEL_OUTPUT.has(name));
@@ -211,10 +224,22 @@ describe("the premise that stripping nulls is safe", () => {
   it("no shared-types model admits null", () => {
     const offenders: string[] = [];
     for (const [name, schema] of objectRootedSchemas()) {
+      if (NULL_IS_NOT_ABSENCE.has(name)) continue;
       const json = JSON.stringify(z.toJSONSchema(schema, { io: "input", unrepresentable: "any" }));
       if (json.includes('"null"')) offenders.push(name);
     }
     expect(offenders).toEqual([]);
+  });
+
+  it("exempts only schemas no model can produce, for the documented reason", () => {
+    for (const name of NULL_IS_NOT_ABSENCE) {
+      const entry = objectRootedSchemas().find(([exported]) => exported === name);
+      expect(entry, `${name} is no longer exported; drop it from the exemption`).toBeDefined();
+      // The exemption is worth having only while the schema really does admit a
+      // null. If the null goes away, so should the entry.
+      const json = JSON.stringify(z.toJSONSchema(entry![1], { io: "input", unrepresentable: "any" }));
+      expect(json).toContain('"null"');
+    }
   });
 });
 

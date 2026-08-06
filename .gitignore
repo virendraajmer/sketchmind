@@ -144,3 +144,7 @@ vite.config.ts.timestamp-*
 
 # Turborepo
 .turbo
+
+# Learned primitives the agent persists between sessions (AD-7). Real memory,
+# not a build artifact -- but it is per-machine, and it is not source.
+apps/api/.data/

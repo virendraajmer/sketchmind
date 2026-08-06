@@ -1,26 +1,65 @@
 import Fastify, { type FastifyInstance } from "fastify";
+import cors from "@fastify/cors";
+import { FileStore, type MemoryStore } from "@sketchmind/agent-memory";
+import type { LLMProvider } from "@sketchmind/llm-provider";
 import { registerHealth } from "./routes/health.js";
+import { registerLlmProxy } from "./routes/llm.js";
+import { registerSessions } from "./routes/sessions.js";
+import { SessionManager } from "./session/manager.js";
+import { loadConfig, type ApiConfig } from "./config.js";
+import { resolveProvider } from "./provider.js";
 
 /**
- * Builds the SketchMind API server.
+ * The composition root.
  *
- * Exported separately from the listen call so tests can drive it via
- * `app.inject()` without binding a port.
+ * Everything the server needs is constructed here and passed down; no route
+ * handler reads the environment or picks a provider. That is what lets a test
+ * hand in a `FakeProvider` and an `InMemoryStore` and get the real routes.
  *
- * This server is also the only place LLM credentials live: the client agent's
- * model turns proxy through here (POST /api/agent/llm, Phase 9) so that no
- * provider SDK or Azure key ever reaches the browser.
+ * This process is also the only place LLM credentials exist. The client agent's
+ * model turns proxy through `POST /api/agent/llm` (see `routes/llm.ts`), so no
+ * provider SDK or Azure key is ever part of a browser bundle.
  */
-export function buildServer(): FastifyInstance {
-  const app = Fastify({ logger: true });
-  registerHealth(app);
-  return app;
+export interface ServerOptions {
+  readonly provider?: LLMProvider;
+  readonly store?: MemoryStore;
+  readonly config?: ApiConfig;
+  /** Off in tests, where request logs bury the assertions. */
+  readonly logger?: boolean;
 }
 
-if (process.env.NODE_ENV !== "test") {
-  const app = buildServer();
-  const port = Number(process.env.PORT ?? 3001);
-  app.listen({ port }, (err) => {
+export interface SketchMindServer {
+  readonly app: FastifyInstance;
+  readonly config: ApiConfig;
+  readonly sessions: SessionManager;
+}
+
+export async function buildServer(options: ServerOptions = {}): Promise<SketchMindServer> {
+  const config = options.config ?? loadConfig();
+  const provider = options.provider ?? resolveProvider();
+  const store = options.store ?? new FileStore({ path: config.memoryPath });
+  const sessions = new SessionManager();
+
+  const app = Fastify({ logger: options.logger ?? true });
+
+  // The browser opens an SSE stream cross-origin in development, where the web
+  // app is on :3000 and this server on :3001.
+  await app.register(cors, { origin: config.webOrigin });
+
+  registerHealth(app);
+  registerSessions(app, { provider, store, config, sessions });
+  registerLlmProxy(app, provider);
+
+  // A process exiting with sessions still running would leave the agent's
+  // in-flight provider call to be reaped by a timeout rather than cancelled.
+  app.addHook("onClose", async () => sessions.cancelAll());
+
+  return { app, config, sessions };
+}
+
+if (process.env["NODE_ENV"] !== "test") {
+  const { app, config } = await buildServer();
+  app.listen({ port: config.port }, (err) => {
     if (err) {
       app.log.error(err);
       process.exit(1);

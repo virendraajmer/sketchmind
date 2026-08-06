@@ -12,8 +12,19 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json"
   },
   "dependencies": {
+    "@fastify/cors": "^10.0.1",
+    "@sketchmind/agent-core": "workspace:*",
+    "@sketchmind/agent-memory": "workspace:*",
+    "@sketchmind/agent-tools-geometry": "workspace:*",
+    "@sketchmind/agent-tools-reasoning": "workspace:*",
+    "@sketchmind/llm-provider": "workspace:*",
+    "@sketchmind/llm-provider-anthropic": "workspace:*",
+    "@sketchmind/llm-provider-azure-openai": "workspace:*",
+    "@sketchmind/session-protocol": "workspace:*",
     "@sketchmind/shared-types": "workspace:*",
-    "fastify": "^5.2.0"
+    "@sketchmind/stroke-runtime": "workspace:*",
+    "fastify": "^5.2.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "tsx": "^4.19.0"

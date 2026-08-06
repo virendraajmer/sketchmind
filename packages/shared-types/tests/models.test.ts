@@ -5,6 +5,7 @@ import {
   LayoutModelSchema,
   StrokeASTSchema,
   StrokeTypeSchema,
+  DrawingFrameSchema,
   FreeformShapeSchema,
   RuntimeEventSchema,
   AgentTraceSchema,
@@ -240,6 +241,8 @@ describe("RuntimeEvent", () => {
         case "StageStarted":
         case "StageCompleted": return "stage";
         case "AgentStep": return `step:${e.locus}`;
+        case "DiagramASTReady": return `ast:${e.ast.id}`;
+        case "FrameUpdate": return `frame:${e.frame.timeMs}`;
         case "VisionCritique": return `vision:${e.accepted}`;
         case "StrokeStarted":
         case "StrokeCompleted": return "stroke";
@@ -266,6 +269,73 @@ describe("RuntimeEvent", () => {
 
   it("rejects an unknown event type", () => {
     expect(RuntimeEventSchema.safeParse({ type: "Nope", sessionId: "s", at: "t" }).success).toBe(false);
+  });
+
+  it("carries a whole trace step, so the panel needs no second fetch", () => {
+    const ev = RuntimeEventSchema.parse({
+      type: "AgentStep",
+      sessionId: "s1",
+      at: "t",
+      stepId: "1",
+      locus: "server",
+      toolName: "solve_layout",
+      toolArgs: { strategy: "radial" },
+      toolResult: { ok: true },
+      tokensIn: 120,
+      tokensOut: 40,
+      durationMs: 812,
+    });
+    if (ev.type !== "AgentStep") throw new Error("wrong variant");
+    expect(ev.toolArgs).toEqual({ strategy: "radial" });
+    expect(ev.durationMs).toBe(812);
+  });
+
+  it("delivers the AST before any geometry exists", () => {
+    const ev = RuntimeEventSchema.parse({ type: "DiagramASTReady", sessionId: "s1", at: "t", ast });
+    if (ev.type !== "DiagramASTReady") throw new Error("wrong variant");
+    expect(ev.ast.title).toBe("Simple Pulley");
+  });
+
+  it("rejects a DiagramASTReady carrying an invalid AST", () => {
+    const r = RuntimeEventSchema.safeParse({
+      type: "DiagramASTReady",
+      sessionId: "s1",
+      at: "t",
+      ast: { ...ast, objects: [] },
+    });
+    expect(r.success).toBe(false);
+  });
+});
+
+describe("DrawingFrame", () => {
+  const stroke = { id: "s1", type: "circle", target: "pulley", order: 0, points: [{ x: 1, y: 2 }] };
+
+  it("round-trips a frame with a stroke mid-flight", () => {
+    const frame = DrawingFrameSchema.parse({
+      timeMs: 400,
+      completed: [stroke],
+      inProgress: { stroke: { ...stroke, id: "s2", order: 1 }, progress: 0.5, points: [{ x: 1, y: 2 }] },
+      pending: 3,
+    });
+    expect(frame.inProgress?.progress).toBe(0.5);
+    expect(frame.completed).toHaveLength(1);
+  });
+
+  it("uses null, not absence, for 'nothing is being drawn right now'", () => {
+    const frame = DrawingFrameSchema.parse({ timeMs: 0, completed: [], inProgress: null, pending: 2 });
+    expect(frame.inProgress).toBeNull();
+    // Omitting the field is a different thing, and not a valid frame.
+    expect(DrawingFrameSchema.safeParse({ timeMs: 0, completed: [], pending: 2 }).success).toBe(false);
+  });
+
+  it("rejects progress outside 0..1", () => {
+    const r = DrawingFrameSchema.safeParse({
+      timeMs: 0,
+      completed: [],
+      inProgress: { stroke, progress: 1.5, points: [] },
+      pending: 0,
+    });
+    expect(r.success).toBe(false);
   });
 });
 

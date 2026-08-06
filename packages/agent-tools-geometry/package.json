@@ -18,6 +18,14 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json"
   },
   "dependencies": {
-    "@sketchmind/shared-types": "workspace:*"
+    "@sketchmind/agent-core": "workspace:*",
+    "@sketchmind/constraint-engine": "workspace:*",
+    "@sketchmind/layout-engine": "workspace:*",
+    "@sketchmind/shared-types": "workspace:*",
+    "@sketchmind/stroke-planner": "workspace:*",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@sketchmind/diagram-ast": "workspace:*"
   }
 }

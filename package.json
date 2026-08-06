@@ -10,6 +10,7 @@
     "build": "turbo run build",
     "lint": "node scripts/check-layering.mjs && turbo run lint",
     "check:layering": "node scripts/check-layering.mjs",
+    "check:bundle": "node scripts/check-client-bundle.mjs",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
     "dev": "turbo run dev --parallel",

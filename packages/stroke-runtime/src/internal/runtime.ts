@@ -14,7 +14,14 @@
  * the clock; they do not start anything. `seek`, `replay` and scrubbing are all
  * the same assignment to `timeMs`, which is why seeking backwards costs nothing.
  */
-import type { Point, PlaybackState, RuntimeEvent, Stroke, StrokeAST } from "@sketchmind/shared-types";
+import type {
+  DrawingFrame,
+  PlaybackState,
+  RuntimeEvent,
+  RuntimeEventBody,
+  Stroke,
+  StrokeAST,
+} from "@sketchmind/shared-types";
 import { partialPath, translate } from "./interpolate.js";
 import { buildTimeline, completedCount, entryAt, type Timeline } from "./timeline.js";
 
@@ -33,16 +40,7 @@ export interface StrokeRuntimeState {
   readonly totalDurationMs: number;
 }
 
-/** What a progressive renderer needs, and nothing else (Volume 06 §Incremental Rendering). */
-export interface DrawingFrame {
-  readonly timeMs: number;
-  /** Strokes to draw in full, in drawing order. */
-  readonly completed: readonly Stroke[];
-  /** The stroke mid-flight, with the pen path traversed so far. */
-  readonly inProgress: { readonly stroke: Stroke; readonly progress: number; readonly points: readonly Point[] } | null;
-  /** Strokes not yet started. A count, not the strokes: a renderer must not draw them. */
-  readonly pending: number;
-}
+export type { DrawingFrame };
 
 export interface StrokeRuntimeOptions {
   /** Stamped onto emitted `RuntimeEvent`s. Phase 9 supplies the real session id. */
@@ -58,13 +56,8 @@ export interface StrokeRuntimeOptions {
 /** Where a stroke may be inserted or moved to. */
 export type StrokeIndex = number;
 
-/**
- * A `RuntimeEvent` minus the fields the runtime fills in. Written with a
- * conditional so it *distributes* over the union -- a bare
- * `Omit<RuntimeEvent, ...>` would collapse to the members' common keys and
- * throw away `strokeId`, `cursor`, and the rest.
- */
-type EventBody = RuntimeEvent extends infer T ? (T extends object ? Omit<T, "sessionId" | "at"> : never) : never;
+/** A `RuntimeEvent` minus the fields the runtime fills in. */
+type EventBody = RuntimeEventBody;
 
 function resequence(strokes: readonly Stroke[]): Stroke[] {
   return strokes.map((stroke, index) => ({

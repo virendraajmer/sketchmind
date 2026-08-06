@@ -127,9 +127,12 @@ async function capture(adapter: RendererAdapter): Promise<Bitmap> {
 describe("Phase 8: Stroke AST -> pixels", () => {
   it("the runtime's DrawingFrame satisfies the renderer's RenderFrame (D-2)", () => {
     // The renderer may not import `stroke-runtime` -- that is an upward
-    // dependency and a CI failure -- so `RenderFrame` is declared independently
-    // and this assignment is what stops the two drifting apart. If it stops
-    // compiling, one of them changed.
+    // dependency and a CI failure -- so the two names were independently
+    // declared twins, and this assignment was what stopped them drifting.
+    // Phase 9 put the frame on the wire, so it became one schema in
+    // `shared-types` (which both layers already depend on) and both names are
+    // now aliases of it. The assignment is kept: it is the check that would
+    // catch either package reintroducing a local declaration.
     const frame: RenderFrame = runtime().frame();
     expect(frame.completed).toBeDefined();
     expect(frame.pending).toBeGreaterThan(0);

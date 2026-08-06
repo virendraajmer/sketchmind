@@ -11,6 +11,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@sketchmind/renderer-core": "workspace:*",
+    "@sketchmind/renderer-konva": "workspace:*",
+    "@sketchmind/session-protocol": "workspace:*",
     "@sketchmind/shared-types": "workspace:*",
     "next": "^15.1.0",
     "react": "^19.0.0",

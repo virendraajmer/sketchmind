@@ -9,7 +9,14 @@
  * package's only dependency is `shared-types`, so a renderer *cannot* call an
  * LLM, compute layout, or generate strokes -- there is nothing here to call.
  */
-import type { BoundingBox, Point, Size, Stroke, ValidationResult } from "@sketchmind/shared-types";
+import type {
+  BoundingBox,
+  DrawingFrame,
+  Point,
+  Size,
+  Stroke,
+  ValidationResult,
+} from "@sketchmind/shared-types";
 import type { DisplayStroke } from "./display.js";
 import type { HitTestOptions, HitTestResult } from "./hittest.js";
 import type { LayerName } from "./layers.js";
@@ -19,25 +26,19 @@ import type { Viewport, ViewportOptions } from "./viewport.js";
 /**
  * What a progressive renderer is given each tick.
  *
- * Structurally identical to `stroke-runtime`'s `DrawingFrame` and deliberately
- * *not* imported from it (D-2): `renderer` sits below `core`, so importing it
- * would be an upward dependency and a CI failure. The duplication is policed by
- * `tests/render-pipeline.test.ts`, which assigns a real `DrawingFrame` to a
- * `RenderFrame` and lets the compiler check the shapes still match.
+ * This was a hand-written twin of `stroke-runtime`'s `DrawingFrame`, duplicated
+ * because `renderer` sits below `core` and importing across that line is an
+ * upward dependency (D-2), with `tests/render-pipeline.test.ts` policing the
+ * drift. Phase 9 put the frame on the wire, which earned it a real schema in
+ * `shared-types` -- the one package both layers already depend on -- so the twin
+ * is now an alias and there is nothing left to drift.
+ *
+ * The name stays: a backend receives a frame to *render*, and `RenderFrame` is
+ * what the adapter contract has always called it.
+ *
+ * `inProgress.points` are advisory -- `progress` is what the renderer uses (D-3).
  */
-export interface RenderFrame {
-  readonly timeMs: number;
-  /** Strokes to draw in full, in drawing order. */
-  readonly completed: readonly Stroke[];
-  /** The stroke mid-flight. Its `points` are advisory -- `progress` is what the renderer uses (D-3). */
-  readonly inProgress: {
-    readonly stroke: Stroke;
-    readonly progress: number;
-    readonly points: readonly Point[];
-  } | null;
-  /** Strokes not yet started. A count, not the strokes: a renderer must not draw them. */
-  readonly pending: number;
-}
+export type RenderFrame = DrawingFrame;
 
 export type ExportFormat = "png" | "svg";
 

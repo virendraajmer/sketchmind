@@ -98,3 +98,39 @@ export const StrokeASTSchema = z.object({
   metadata: MetadataSchema.optional(),
 });
 export type StrokeAST = z.infer<typeof StrokeASTSchema>;
+
+/**
+ * A playback snapshot at one instant (Volume 06 §Incremental Rendering).
+ *
+ * `stroke-runtime`'s `DrawingFrame` and `renderer-core`'s `RenderFrame` are both
+ * this shape. They were separate hand-written interfaces because renderer sits
+ * *below* core in the layer graph, so neither package may import the other's
+ * type -- and were held in sync only by a compile-time check in
+ * `tests/render-pipeline.test.ts`.
+ *
+ * That was tolerable while the shape never left one process. Phase 9 puts it on
+ * the wire, and an unvalidated frame arriving from the network is exactly the
+ * kind of thing the schema layer exists for. Both packages already depend on
+ * `shared-types`, so defining it once here removes the duplication rather than
+ * adding a third copy.
+ *
+ * Arrays are `.readonly()` so `z.infer` reproduces the existing interfaces
+ * exactly -- a renderer must not mutate the frame it was handed.
+ */
+export const DrawingFrameSchema = z.object({
+  timeMs: z.number().nonnegative(),
+  /** Strokes to draw in full, in drawing order. */
+  completed: z.array(StrokeSchema).readonly(),
+  /** The stroke mid-flight, with the pen path traversed so far. */
+  inProgress: z
+    .object({
+      stroke: StrokeSchema,
+      progress: z.number().min(0).max(1),
+      points: z.array(PointSchema).readonly(),
+    })
+    .readonly()
+    .nullable(),
+  /** Strokes not yet started. A count, not the strokes: a renderer must not draw them. */
+  pending: z.number().int().nonnegative(),
+});
+export type DrawingFrame = z.infer<typeof DrawingFrameSchema>;
