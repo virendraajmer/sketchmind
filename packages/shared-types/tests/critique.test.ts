@@ -4,6 +4,8 @@ import {
   CritiqueReportSchema,
   RuntimeEventSchema,
   SCHEMA_VERSION,
+  findingsEqual,
+  type CritiqueFinding,
 } from "../src/index.js";
 
 const FINDING = {
@@ -76,5 +78,42 @@ describe("VisionCritique runtime event", () => {
       accepted: false,
     });
     expect(parsed.success).toBe(false);
+  });
+});
+
+describe("findingsEqual", () => {
+  const base: CritiqueFinding = FINDING as CritiqueFinding;
+
+  it("treats findings differing only by id as equal", () => {
+    const a = { ...base, id: "f1" };
+    const b = { ...base, id: "f2" };
+    expect(findingsEqual([a], [b])).toBe(true);
+  });
+
+  it("treats findings differing by check as unequal", () => {
+    const a = { ...base, id: "f1" };
+    const b = { ...base, id: "f1", check: "other-check" };
+    expect(findingsEqual([a], [b])).toBe(false);
+  });
+
+  it("treats findings differing by severity as unequal", () => {
+    const a = { ...base, id: "f1", severity: "error" as const };
+    const b = { ...base, id: "f1", severity: "warning" as const };
+    expect(findingsEqual([a], [b])).toBe(false);
+  });
+
+  it("treats findings differing by objectIds as unequal", () => {
+    const a = { ...base, id: "f1", objectIds: ["rope_1"] };
+    const b = { ...base, id: "f1", objectIds: ["rope_2"] };
+    expect(findingsEqual([a], [b])).toBe(false);
+  });
+
+  it("treats lists of different lengths as unequal", () => {
+    const a = { ...base, id: "f1" };
+    expect(findingsEqual([a], [a, a])).toBe(false);
+  });
+
+  it("treats two empty lists as equal", () => {
+    expect(findingsEqual([], [])).toBe(true);
   });
 });

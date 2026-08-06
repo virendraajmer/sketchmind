@@ -26,6 +26,8 @@ import {
   IntentModelSchema,
   LayoutModelSchema,
   StrokeASTSchema,
+  CritiqueFindingSchema,
+  CritiqueReportSchema,
 } from "../src/index.js";
 
 /**
@@ -81,6 +83,8 @@ const GUARDED: Array<[string, z.ZodType]> = [
   ["VIL", VILSchema],
   ["ConstraintGraph", ConstraintGraphSchema],
   ["IntentModel", IntentModelSchema],
+  ["CritiqueFinding", CritiqueFindingSchema],
+  ["CritiqueReport", CritiqueReportSchema],
 ];
 
 describe("geometry purity", () => {
@@ -96,6 +100,8 @@ describe("geometry purity", () => {
       "VIL",
       "ConstraintGraph",
       "IntentModel",
+      "CritiqueFinding",
+      "CritiqueReport",
     ]);
   });
 });
