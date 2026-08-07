@@ -2,7 +2,7 @@
  * The renderer adapter contract (Volume 08 §Renderer Adapter).
  *
  * Every backend implements exactly this, and nothing above the renderer layer
- * ever names a backend type. `apps/web` resolves an adapter through the registry
+ * ever names a backend type. `apps/studio` resolves an adapter through the registry
  * so Phase 12's plugin backends are a registration, not a code change.
  *
  * Volume 08's constraint holds here structurally, not just by convention: this

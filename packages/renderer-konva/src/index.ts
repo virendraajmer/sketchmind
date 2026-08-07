@@ -55,7 +55,7 @@ export const konvaRendererFactory: RendererFactory = {
  *
  * Explicit rather than an import side effect: a module that mutates global state
  * on import is invisible at the call site and impossible to opt out of, and
- * `apps/web` should be able to choose its backends.
+ * `apps/studio` should be able to choose its backends.
  */
 export function registerKonvaRenderer(): ValidationResult<void> {
   return rendererRegistry.register(konvaRendererFactory);

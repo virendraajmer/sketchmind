@@ -118,7 +118,7 @@ export class KonvaRendererAdapter extends BaseRendererAdapter {
     this.#background = null;
   }
 
-  /** Escape hatch for `apps/web` (pointer events) and for the test suite's cross-checks. */
+  /** Escape hatch for `apps/studio` (pointer events) and for the test suite's cross-checks. */
   stage(): Konva.Stage | null {
     return this.#stage;
   }

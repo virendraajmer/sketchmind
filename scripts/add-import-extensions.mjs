@@ -10,7 +10,7 @@
  * NodeNext fixes the emit but requires the source to spell the extension, and
  * TypeScript's `.js`-means-`.ts` convention is what makes that work.
  *
- * Idempotent. Skips apps/web, which stays on bundler resolution for Next.js.
+ * Idempotent.
  */
 import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SKIP_DIRS = new Set(["node_modules", "dist", ".next", ".turbo"]);
-const SKIP_PACKAGES = new Set([join(ROOT, "apps", "web")]);
+const SKIP_PACKAGES = new Set();
 
 /** `from "./x"` / `from "../x"` -- but not `"./x.js"`, `"./x.json"`, `"./x.css"`. */
 const SPECIFIER = /(\bfrom\s*|\bimport\s*\(\s*)(["'])(\.{1,2}\/[^"']*?)\2/g;

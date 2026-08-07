@@ -15,7 +15,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const targetDirs = process.argv.slice(2);
-const BUNDLES = targetDirs.length > 0 ? targetDirs : ["apps/web/.next/static", "apps/studio/dist"];
+const BUNDLES = targetDirs.length > 0 ? targetDirs : ["apps/studio/dist"];
 
 /**
  * Each entry is a thing that must never be in a browser bundle, and why. The

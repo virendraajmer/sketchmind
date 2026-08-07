@@ -36,7 +36,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
  * duplicating the tool-definition format or splitting `agent-core` in two.
  */
 const LAYERS = [
-  { name: "app", members: ["@sketchmind/web", "@sketchmind/studio", "@sketchmind/api"] },
+  { name: "app", members: ["@sketchmind/studio", "@sketchmind/api"] },
   { name: "orchestrator", members: ["@sketchmind/ai-orchestrator"] },
   {
     name: "tools",

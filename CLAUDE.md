@@ -24,7 +24,7 @@ pnpm lint               # check:layering + turbo run lint (eslint)
 pnpm check:layering     # node scripts/check-layering.mjs — dependency-direction check only
 pnpm typecheck          # turbo run typecheck
 pnpm test               # turbo run test (vitest, per package)
-pnpm dev                # turbo run dev --parallel (apps/web + apps/api)
+pnpm dev                # turbo run dev --parallel (apps/studio + apps/api)
 ```
 
 Per-package, from that package's directory (or `pnpm --filter @sketchmind/<name> run <script>`):
@@ -35,7 +35,8 @@ pnpm exec vitest run <file>                 # single test file
 pnpm exec vitest run -t "<test name>"       # single test by name
 ```
 
-`apps/api`: `pnpm dev` runs `tsx watch src/server.ts`. `apps/web`: `pnpm dev` runs Next.js on :3000.
+`apps/api`: `pnpm dev` runs `tsx watch --env-file=.env src/server.ts`. `apps/studio`: `pnpm dev` runs
+Vite on :5173. `apps/web` (Next.js) was removed once `apps/studio` reached parity.
 
 Scaffolding a new package: `node scripts/scaffold-package.mjs <name> "<responsibility>"` (never
 overwrites; `--all` scaffolds the full Phase 1 set). See `.claude/skills/scaffold-package/` for
@@ -43,7 +44,7 @@ the full workflow including layer registration.
 
 ## Architecture
 
-**Monorepo layout:** `apps/` (web, api — consume packages, no reusable logic), `packages/`
+**Monorepo layout:** `apps/` (studio, api — consume packages, no reusable logic), `packages/`
 (everything else), `tests/` (root-level contract/integration/system tests only — unit tests live
 in each package's own `tests/`), `docs/`, `scripts/` (CI + repo automation), `tools/` (dev-only,
 unpublished generators), `configs/` (centralized config, injected via DI — packages never read
@@ -54,7 +55,7 @@ package-level layering isn't visible to `import/no-cycle`, and reading manifests
 faster than full TS resolution):
 
 ```
-apps (web, api)
+apps (studio, api)
   → agent-orchestrator (ai-orchestrator)
   → tools (agent-tools-reasoning, agent-tools-geometry, agent-tools-canvas)
   → agent (agent-core, agent-memory, agent-vision)
@@ -115,8 +116,8 @@ One `AbortController` per session is the whole cancellation story: it reaches th
 every `ToolContext`, and the playback pump.
 
 **Module resolution:** `tsconfig.base.json` uses `NodeNext`/`NodeNext`, not `Bundler` — required
-so `dist/` is loadable by plain `node`, not just by a bundler-aware test runner. `apps/web`
-overrides back to `Bundler` because Next.js requires it.
+so `dist/` is loadable by plain `node`, not just by a bundler-aware test runner. `apps/studio`
+overrides back to `Bundler` because Vite requires it.
 
 **Headless rendering in tests:** Konva rasterises under Node via `konva/canvas-backend` +
 `node-canvas`, wired through `setupFiles` in `packages/renderer-konva/vitest.config.ts` and
@@ -129,7 +130,8 @@ longer reads that field from `package.json`).
 Phases 1–10 complete (repo foundation, core models, LLM provider abstraction, agent-core +
 agent-memory, reasoning tools, constraint-engine + layout-engine, stroke-planner + stroke-runtime,
 renderer-core + renderer-konva + renderer-svg + export-engine, the vertical slice: session-protocol
-+ agent-tools-geometry + `apps/api` + `apps/web`, and vision self-correction with geometric and
++ agent-tools-geometry + `apps/api` + `apps/web`, since replaced by `apps/studio`), and vision
+self-correction with geometric and
 visual critique tiers and a client-side vision agent). Phase 11 (client agent full autonomy) is next.
 See the implementation plan doc for phase-by-phase scope and acceptance criteria before starting new
 package work, plus `docs/superpowers/plans/2026-08-05-phase-5-reasoning-tools.md` for the decisions

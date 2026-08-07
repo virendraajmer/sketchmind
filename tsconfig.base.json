@@ -5,7 +5,7 @@
     // a `.js` extension, which Node's ESM loader cannot resolve -- `dist/` was
     // literally unloadable outside a bundler. Vitest hid this because it
     // resolves through its own bundler; `node dist/index.js` did not.
-    // `apps/web` overrides this back to Bundler, which is what Next.js needs.
+    // `apps/studio` overrides this back to Bundler, which is what Vite needs.
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "strict": true,

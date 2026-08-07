@@ -2,7 +2,7 @@
  * The renderer registry (Volume 08 §Renderer Registry): register backends,
  * discover capabilities, select one, resolve compatibility.
  *
- * The point of the registry is that `apps/web` asks for *a renderer that can do
+ * The point of the registry is that `apps/studio` asks for *a renderer that can do
  * X* rather than importing `renderer-konva`. Selecting by capability is what makes
  * Phase 12's plugin backends a registration rather than a code change, and it is
  * the same discipline the LLM provider abstraction applies one layer down.
