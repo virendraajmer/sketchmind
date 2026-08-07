@@ -275,6 +275,10 @@ export function useSession(getBitmap?: () => Promise<ImageBitmap>): Session {
       // still be whatever it was at call time (stale) -- the `SessionStarted`
       // event is the only source of truth for this session's gate.
       let visionEnabled = false;
+      // An EventSource reconnect (proxy idle timeout, transient network blip)
+      // replays the buffered `SessionCompleted` into this same closure; without
+      // this guard that would start a second vision agent for one session.
+      let visionStarted = false;
 
       const stream = new EventSource(`${API}/api/sessions/${id}/stream`);
       source.current = stream;
@@ -317,7 +321,8 @@ export function useSession(getBitmap?: () => Promise<ImageBitmap>): Session {
 
         if (!TERMINAL.has(decoded.value.type)) return;
 
-        if (decoded.value.type === "SessionCompleted" && visionEnabled) {
+        if (decoded.value.type === "SessionCompleted" && visionEnabled && !visionStarted) {
+          visionStarted = true;
           // The stream must stay open past this session's own terminal event:
           // `VisionCritique` and a repair turn's own step/frame events arrive
           // on this same stream, emitted server-side only after
