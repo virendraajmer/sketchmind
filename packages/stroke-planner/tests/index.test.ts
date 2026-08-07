@@ -266,8 +266,8 @@ describe("planStrokes failure modes", () => {
 });
 
 describe("stroke generator registry (Volume 06 §Extensibility)", () => {
-  it("ships box and disc, and accepts a plugin generator without changing the planner", () => {
-    expect(registeredStrokeGeneratorNames()).toEqual(["box", "disc"]);
+  it("ships box, disc and freeform, and accepts a plugin generator without changing the planner", () => {
+    expect(registeredStrokeGeneratorNames()).toEqual(["box", "disc", "freeform"]);
 
     registerStrokeGenerator({
       name: "test-cross",

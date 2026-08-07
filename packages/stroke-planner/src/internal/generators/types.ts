@@ -7,13 +7,22 @@
  * ordering pass (D-3) -- and it never sees the rest of the diagram, so two
  * objects of the same type always produce the same shape.
  */
-import type { DiagramObject, LayoutNode, Point, StrokeStyle, StrokeType } from "@sketchmind/shared-types";
+import type {
+  DiagramObject,
+  FreeformShape,
+  LayoutNode,
+  Point,
+  StrokeStyle,
+  StrokeType,
+} from "@sketchmind/shared-types";
 
 export interface GeneratorInput {
   /** The object being drawn, for its type, name, and declared anchors. */
   readonly object: DiagramObject;
   /** Its solved geometry. The only place a generator may read coordinates from. */
   readonly node: LayoutNode;
+  /** The one-off shape this object resolved to, when it has one (AD-5). */
+  readonly shape?: FreeformShape;
 }
 
 /**

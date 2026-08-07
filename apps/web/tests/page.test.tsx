@@ -25,9 +25,20 @@ class FakeEventSource {
   onerror: (() => void) | null = null;
   readyState = 1;
   closed = false;
+  private readonly listeners = new Map<string, Set<(event: MessageEvent<string>) => void>>();
 
   constructor(readonly url: string) {
     FakeEventSource.last = this;
+  }
+
+  addEventListener(type: string, handler: (event: MessageEvent<string>) => void): void {
+    const registered = this.listeners.get(type) ?? new Set();
+    registered.add(handler);
+    this.listeners.set(type, registered);
+  }
+
+  removeEventListener(type: string, handler: (event: MessageEvent<string>) => void): void {
+    this.listeners.get(type)?.delete(handler);
   }
 
   close(): void {
@@ -35,14 +46,27 @@ class FakeEventSource {
     this.readyState = 2;
   }
 
-  /** Deliver an event the way the browser would: one `data:` payload. */
+  /**
+   * Deliver an event the way the browser would: a frame carrying `event:`
+   * reaches only listeners registered for that name, never `onmessage`.
+   */
   deliver(event: RuntimeEvent): void {
-    const data = encodeServerEvent(event)
-      .split("\n")
+    const lines = encodeServerEvent(event).split("\n");
+    const name = lines
+      .find((line) => line.startsWith("event:"))
+      ?.slice("event:".length)
+      .trim();
+    const data = lines
       .find((line) => line.startsWith("data:"))!
       .slice("data:".length)
       .trim();
-    this.onmessage?.(new MessageEvent("message", { data }));
+    const message = new MessageEvent(name ?? "message", { data });
+
+    if (name === undefined) {
+      this.onmessage?.(message);
+      return;
+    }
+    for (const handler of this.listeners.get(name) ?? []) handler(message);
   }
 }
 

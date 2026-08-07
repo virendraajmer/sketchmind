@@ -6,6 +6,12 @@ import type { BoundingBox, DrawingFrame } from "@sketchmind/shared-types";
 export interface WhiteboardProps {
   readonly frame?: DrawingFrame;
   readonly bounds?: BoundingBox;
+  /**
+   * What the agent is doing right now, shown while the board is still empty.
+   * Nothing is drawn until `plan_strokes` runs, which is the last stage -- so
+   * without this the board is blank for the whole run and looks stalled.
+   */
+  readonly activity?: string;
   /** Upper bound on the canvas's rendered width; height follows from the aspect ratio. */
   readonly width?: number;
   readonly height?: number;
@@ -28,7 +34,7 @@ export interface WhiteboardHandle {
 }
 
 function Whiteboard(
-  { frame, bounds, width = 900, height = 600 }: WhiteboardProps,
+  { frame, bounds, activity, width = 900, height = 600 }: WhiteboardProps,
   ref: React.ForwardedRef<WhiteboardHandle>,
 ): React.JSX.Element {
   const wrapper = useRef<HTMLDivElement>(null);
@@ -116,8 +122,21 @@ function Whiteboard(
             {error}
           </p>
         ) : !frame ? (
-          <p className="absolute inset-0 flex items-center justify-center text-muted pointer-events-none">
-            Nothing drawn yet.
+          <p
+            className="absolute inset-0 flex items-center justify-center gap-2 text-muted pointer-events-none"
+            role="status"
+          >
+            {activity ? (
+              <>
+                <span
+                  aria-hidden="true"
+                  className="inline-block size-2 animate-pulse rounded-full bg-current"
+                />
+                {activity}
+              </>
+            ) : (
+              "Nothing drawn yet."
+            )}
           </p>
         ) : null}
       </div>

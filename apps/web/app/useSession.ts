@@ -12,7 +12,11 @@
  * of the guarantee.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { decodeServerEvent, type RuntimeEvent } from "@sketchmind/session-protocol";
+import {
+  RUNTIME_EVENT_TYPES,
+  decodeServerEvent,
+  type RuntimeEvent,
+} from "@sketchmind/session-protocol";
 import type {
   AgentTraceStep,
   BoundingBox,
@@ -151,6 +155,12 @@ export function useSession(): Session {
         setState((current) => reduce(current, decoded.value));
         if (TERMINAL.has(decoded.value.type)) close();
       };
+
+      // The server names every frame (`event: FrameUpdate`), and `onmessage`
+      // fires only for unnamed frames -- so each type needs its own listener.
+      for (const type of RUNTIME_EVENT_TYPES) {
+        stream.addEventListener(type, stream.onmessage as EventListener);
+      }
 
       stream.onerror = () => {
         // EventSource reconnects on its own, so an error is only fatal once the

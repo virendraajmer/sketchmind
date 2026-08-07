@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RuntimeEvent } from "@sketchmind/shared-types";
-import { decodeServerEvent, encodeServerEvent } from "../src/index.js";
+import { RUNTIME_EVENT_TYPES, decodeServerEvent, encodeServerEvent } from "../src/index.js";
 
 const started: RuntimeEvent = {
   type: "SessionStarted",
@@ -20,6 +20,15 @@ describe("SSE framing", () => {
 
   it("names the event type in the frame, so a browser can subscribe per type", () => {
     expect(encodeServerEvent(started).startsWith("event: SessionStarted\n")).toBe(true);
+  });
+
+  // A browser subscribes by iterating this list; a name missing from it is an
+  // event the UI silently never receives, which is not visible as a failure
+  // anywhere else.
+  it("lists every event name a frame can carry", () => {
+    expect(RUNTIME_EVENT_TYPES).toContain("FrameUpdate");
+    expect(RUNTIME_EVENT_TYPES).toContain(started.type);
+    expect(new Set(RUNTIME_EVENT_TYPES).size).toBe(RUNTIME_EVENT_TYPES.length);
   });
 
   it("terminates the frame with a blank line", () => {

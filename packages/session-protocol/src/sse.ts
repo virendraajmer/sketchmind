@@ -43,12 +43,22 @@ export const SSE_HEADERS: Readonly<Record<string, string>> = {
 };
 
 /**
+ * Every value the `event:` field can take -- derived from the schema so a new
+ * event variant cannot be added without subscribers seeing it.
+ *
+ * A browser consumer MUST iterate this and `addEventListener` per name.
+ * `EventSource.onmessage` fires only for frames with no `event:` field, so a
+ * lone `onmessage` handler receives nothing from this encoder.
+ */
+export const RUNTIME_EVENT_TYPES: readonly RuntimeEvent["type"][] =
+  RuntimeEventSchema.options.map((option) => option.shape.type.value);
+
+/**
  * Encode one event as an SSE frame.
  *
  * The `event:` field carries the discriminant so a browser may subscribe per
- * type with `addEventListener`. The type is also inside `data`, so a consumer
- * using a single `onmessage` handler and switching on `event.type` loses
- * nothing.
+ * type with `addEventListener` over `RUNTIME_EVENT_TYPES`. The type is also
+ * inside `data`, so the handler can stay a single function.
  */
 export function encodeServerEvent(event: RuntimeEvent): string {
   return `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;

@@ -16,6 +16,7 @@ export default function App(): React.JSX.Element {
   }, []);
   const { state, start, cancel } = useSession(getBitmap);
   const busy = BUSY.has(state.phase);
+  const activity = busy ? describeActivity(state.steps[state.steps.length - 1]) : undefined;
 
   const submit = (event: FormEvent): void => {
     event.preventDefault();
@@ -31,7 +32,7 @@ export default function App(): React.JSX.Element {
             aria-label="What should I draw?"
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
-            placeholder="Draw a movable pulley"
+            placeholder="Draw a movable pulley with rope and load"
             disabled={busy}
             className="flex-1 px-[10px] py-[7px] border border-line rounded-md bg-surface font-inherit outline-none transition-colors focus-visible:border-ink focus-visible:ring-2 focus-visible:ring-ink/20 disabled:opacity-45"
           />
@@ -75,6 +76,7 @@ export default function App(): React.JSX.Element {
               ref={whiteboard}
               {...(state.frame ? { frame: state.frame } : {})}
               {...(state.bounds ? { bounds: state.bounds } : {})}
+              {...(activity ? { activity } : {})}
             />
           </ErrorBoundary>
         </section>
@@ -105,3 +107,31 @@ const STATUS: Record<string, string> = {
   failed: "Failed.",
   cancelled: "Cancelled.",
 };
+
+/**
+ * Each stage in the viewer's words, not the tool's. The agent chooses its own
+ * stages (AD-1), so this is a lookup with a fallback rather than a progress bar
+ * -- there is no fixed number of steps to be a fraction of.
+ */
+const ACTIVITY: Record<string, string> = {
+  analyze_intent: "Working out what you asked for…",
+  plan_visual: "Planning the picture…",
+  build_shape_graph: "Working out what it is made of…",
+  compose_diagram_ast: "Composing the diagram…",
+  validate_diagram: "Checking the diagram…",
+  search_primitives: "Looking for shapes it already knows…",
+  generate_primitive: "Working out a new shape…",
+  compose_freeform: "Drawing out the shape…",
+  recall: "Remembering…",
+  learn: "Remembering this for next time…",
+  forget: "Clearing a memory…",
+  derive_constraints: "Working out how the parts relate…",
+  solve_layout: "Arranging it on the board…",
+  critique_diagram: "Checking its own work…",
+  plan_strokes: "Planning the strokes…",
+};
+
+function describeActivity(step: { toolName?: string } | undefined): string {
+  if (!step?.toolName) return "Thinking…";
+  return ACTIVITY[step.toolName] ?? `${step.toolName.replace(/_/g, " ")}…`;
+}

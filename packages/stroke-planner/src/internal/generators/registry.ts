@@ -2,15 +2,16 @@
  * Generator registry (D-4), the same extension-point shape `layout-engine` uses
  * for layout strategies.
  *
- * Two generators ship. That is not an oversight: nothing upstream of this
- * package knows an object's shape -- the AST's `type` is an open string (AD-5)
- * and Phase 6 gave every leaf the same box -- so a larger built-in table would
- * be inventing knowledge that belongs in a primitive manifest (`primitive-sdk`,
- * Phase 12). `registerStrokeGenerator` is how a manifest, or a plugin, supplies
- * the real thing without this package changing.
+ * The type table below stays short on purpose: the AST's `type` is an open
+ * string (AD-5), so a large built-in table would be inventing knowledge that
+ * belongs to the shape itself. An object the table cannot name is not a box by
+ * default -- it is a box only if nothing composed a `FreeformShape` for it, in
+ * which case `freeform` draws whatever the agent worked out.
+ * `registerStrokeGenerator` remains how a manifest or plugin supplies more.
  */
 import { boxGenerator } from "./box.js";
 import { discGenerator } from "./disc.js";
+import { freeformGenerator } from "./freeform.js";
 import type { StrokeGenerator } from "./types.js";
 
 const registry = new Map<string, StrokeGenerator>();
@@ -29,8 +30,10 @@ export function registeredStrokeGeneratorNames(): string[] {
 
 registerStrokeGenerator(boxGenerator);
 registerStrokeGenerator(discGenerator);
+registerStrokeGenerator(freeformGenerator);
 
 export const DEFAULT_GENERATOR = "box";
+export const FREEFORM_GENERATOR = "freeform";
 
 /**
  * Semantic type -> generator. Short on purpose: these are the types where

@@ -23,6 +23,7 @@ import {
   type BoundingBox,
   type DiagramAST,
   type DiagramObject,
+  type FreeformShape,
   type LayoutLabel,
   type LayoutModel,
   type Point,
@@ -33,7 +34,9 @@ import {
   type StrokeType,
 } from "@sketchmind/shared-types";
 import { boundsOf, orientPath, roundPoint, unionBounds } from "./geometry.js";
+import { resolveFreeform } from "./freeform-lookup.js";
 import {
+  FREEFORM_GENERATOR,
   generatorNameFor,
   getStrokeGenerator,
   registeredStrokeGeneratorNames,
@@ -67,6 +70,11 @@ export interface PlanOptions {
    * a plugin uses. Returning `undefined` falls back to the type table (D-4).
    */
   readonly generatorFor?: (object: DiagramObject) => string | undefined;
+  /**
+   * One-off shapes the agent composed this run, by shape id (AD-5). An object
+   * that resolves to one is drawn with it instead of the type table's box.
+   */
+  readonly freeforms?: ReadonlyMap<string, FreeformShape>;
   /** Merged over every stroke's phase defaults. Pen configuration, not appearance. */
   readonly style?: Partial<StrokeStyle>;
 }
@@ -134,7 +142,10 @@ function objectItems(
     const flat = objects.get(node.objectId);
     if (!flat) continue; // Already reported by the cross-check in `plan`.
 
-    const name = options.generatorFor?.(flat.object) ?? generatorNameFor(flat.object.type);
+    const shape = resolveFreeform(flat.object, options.freeforms);
+    const name =
+      options.generatorFor?.(flat.object) ??
+      (shape ? FREEFORM_GENERATOR : generatorNameFor(flat.object.type));
     const generator = getStrokeGenerator(name);
     if (!generator) {
       errors.push(
@@ -153,8 +164,8 @@ function objectItems(
       depth: flat.depth,
       rank: node.zIndex,
       target: node.objectId,
-      strokes: generator.generate({ object: flat.object, node }),
-      metadata: { generator: name, objectType: flat.object.type },
+      strokes: generator.generate({ object: flat.object, node, ...(shape ? { shape } : {}) }),
+      metadata: { generator: name, objectType: flat.object.type, ...(shape ? { shape: shape.id } : {}) },
       bounds: node.bounds,
     });
   }

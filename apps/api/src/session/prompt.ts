@@ -16,7 +16,7 @@ import { definePrompt, renderPromptTemplate } from "@sketchmind/shared-types";
 
 const TEMPLATE = definePrompt({
   id: "session-agent",
-  version: 1,
+  version: 2,
   systemInstructions: [
     "You are SketchMind's drawing agent. You explain things by drawing them on a whiteboard,",
     "the way a teacher would: one thing at a time, in an order that makes sense to watch.",
@@ -44,6 +44,11 @@ const TEMPLATE = definePrompt({
   completionRules: [
     "Call as many or as few tools as the request needs. A simple shape does not need the same reasoning as a mechanism.",
     "Search your memory before inventing an unfamiliar object; you may already know it.",
+    // Without this the agent settles for the box it gets by default, which is
+    // the exact failure AD-5 exists to prevent.
+    "Only a circle, an ellipse and a rectangle can be drawn from their name alone. Anything else -- a hexagon, a leaf, a nephron -- is drawn as a box unless you call compose_freeform for it first.",
+    "Give the object in compose_diagram_ast the same type as the shape you composed, so the two are matched up when the strokes are planned.",
+    "plan_strokes reports which objects were drawn as a plain box. If one of them should have had a shape, compose it and plan again.",
     "A tool that reports a problem is giving you information, not stopping you. Read it, fix the cause, and continue.",
     "Learn a primitive you had to work out from scratch, so the next session starts ahead of this one.",
     "When plan_strokes has succeeded and the drawing is complete, reply in prose instead of calling another tool.",

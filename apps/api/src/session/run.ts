@@ -96,7 +96,11 @@ export async function runSession(options: RunSessionOptions): Promise<void> {
 
   const registry = new ToolRegistry([
     ...createReasoningTools({ provider, workspace: reasoning, catalog: memoryCatalog(store, embedder) }),
-    ...createGeometryTools({ workspace: geometry, getAst: () => reasoning.ast }),
+    ...createGeometryTools({
+      workspace: geometry,
+      getAst: () => reasoning.ast,
+      getFreeforms: () => reasoning.freeforms,
+    }),
     ...createVisionTools({
       getAst: () => reasoning.ast,
       getLayout: () => geometry.layout,

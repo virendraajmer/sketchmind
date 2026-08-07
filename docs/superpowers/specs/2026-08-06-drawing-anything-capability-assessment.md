@@ -31,13 +31,18 @@ sound:
 `StrokeType` already enumerates all twelve drawing acts, including `curve`, `arc`, `polygon` and
 `freehand`. The vocabulary for "anything" exists in the type system.
 
-**Nothing consumes it.** `stroke-planner` registers exactly two generators, `box` and `disc`
-(`internal/generators/registry.ts`). No code path reads a `FreeformShape`. As of today the system
-draws rectangles and circles, and that is the entire repertoire.
+**Consumed since 2026-08-07.** `stroke-planner` registers a third generator, `freeform`, which maps
+a shape's unit box onto the layout node it was placed in and samples every sub-primitive into a pen
+path. `planStrokes` takes the run's shapes via `PlanOptions.freeforms` and selects `freeform` over
+the type table whenever an object resolves to one -- by explicit `properties.freeformId`, or by
+matching the object's own `type`/`name` against the shape's. `agent-tools-geometry` passes them
+through from `ReasoningWorkspace.freeforms`, so a shape `compose_freeform` composed is now the shape
+that gets drawn. Before this the box fallback silently discarded it and every unrecognised type came
+out as a rectangle.
 
-This makes the proposed test ladder — lines, rectangles, circles, then complex objects — not a
-compromise but an accurate description of where the code already is. The gap is generator coverage,
-not architecture.
+This makes the proposed test ladder -- lines, rectangles, circles, then complex objects -- an
+accurate description of where the code is. The remaining gap is quality of the composed shapes, not
+reach.
 
 ## Gap 1 — pictorial and structural are a genuine fork
 
@@ -89,12 +94,12 @@ Not a roadmap — a fixture set, each rung a golden-file test:
 
 | Rung | Exercises | Status |
 |---|---|---|
-| 1. Single line | Stroke planner, runtime, both renderers | Needs a `line` generator |
+| 1. Single line | Stroke planner, runtime, both renderers | Via `freeform`, a `line` part |
 | 2. Rectangle | Box generator, layout box model | Exists |
 | 3. Circle / ellipse | Disc generator | Exists |
 | 4. Connected boxes + labels | Constraint engine, connector routing, label placement | Exists |
-| 5. Composite freeform (pulley + rope) | `FreeformShape` end to end, unit-space anchors, `anchor-miss` critique | Not built |
-| 6. Organic freeform (nephron) | Model spatial ability, tier-2 vision critique | Not built |
+| 5. Composite freeform (pulley + rope) | `FreeformShape` end to end, unit-space anchors, `anchor-miss` critique | Generator built; unit-space anchors still unresolved |
+| 6. Organic freeform (nephron) | Model spatial ability, tier-2 vision critique | Generator built; quality unmeasured |
 
 The rung at which output stops being convincing identifies the next investment — generators, layout
 strategies, or vision critique — measured rather than guessed.

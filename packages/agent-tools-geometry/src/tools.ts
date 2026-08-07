@@ -26,6 +26,7 @@ import {
   makeError,
   ok,
   type DiagramAST,
+  type FreeformShape,
   type PipelineStage,
   type SketchMindError,
 } from "@sketchmind/shared-types";
@@ -46,6 +47,12 @@ export interface GeometryToolsOptions {
    * into a workspace this package deliberately knows nothing about.
    */
   readonly getAst: () => DiagramAST | undefined;
+  /**
+   * Shapes `compose_freeform` produced this run (AD-5), read the same way and
+   * for the same reason. Without them an object the type table cannot name is
+   * drawn as a box, which silently discards the shape the agent worked out.
+   */
+  readonly getFreeforms?: () => ReadonlyMap<string, FreeformShape> | undefined;
 }
 
 function missing(what: string, tool: string, stage: PipelineStage): SketchMindError {
@@ -61,7 +68,7 @@ function missing(what: string, tool: string, stage: PipelineStage): SketchMindEr
 const NoArgs = z.object({});
 
 export function createGeometryTools(options: GeometryToolsOptions): ToolDefinition[] {
-  const { workspace, getAst } = options;
+  const { workspace, getAst, getFreeforms } = options;
 
   const constraints = defineTool({
     name: "derive_constraints",
@@ -142,7 +149,11 @@ export function createGeometryTools(options: GeometryToolsOptions): ToolDefiniti
       const solved = workspace.layout;
       if (!solved) return fail([missing("layout", "solve_layout", "stroke")]);
 
-      const result = planStrokes(ast, solved, { optimize: args.optimize });
+      const freeforms = getFreeforms?.();
+      const result = planStrokes(ast, solved, {
+        optimize: args.optimize,
+        ...(freeforms ? { freeforms } : {}),
+      });
       if (!result.ok) return result;
 
       workspace.strokeAST = result.value;
@@ -152,6 +163,15 @@ export function createGeometryTools(options: GeometryToolsOptions): ToolDefiniti
         // Named so the model can tell "I drew everything" from "I drew the
         // pulley and forgot the rope" without being shown a coordinate.
         targets: [...new Set(result.value.strokes.map((stroke) => stroke.target))],
+        // Which objects fell back to a plain box, so the model can see that a
+        // shape it composed was not picked up -- and compose one for the rest.
+        drawnAsBox: [
+          ...new Set(
+            result.value.strokes
+              .filter((stroke) => stroke.metadata?.["generator"] === "box")
+              .map((stroke) => stroke.target),
+          ),
+        ],
       });
     },
   });

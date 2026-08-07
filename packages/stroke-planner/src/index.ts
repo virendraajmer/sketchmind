@@ -30,6 +30,7 @@ import { optimize } from "./internal/optimize.js";
 import { semanticErrors } from "./internal/validate.js";
 import {
   DEFAULT_GENERATOR,
+  FREEFORM_GENERATOR,
   GENERATOR_FOR_TYPE,
   getStrokeGenerator,
   registerStrokeGenerator,
@@ -46,6 +47,7 @@ export type { GeneratedStroke, GeneratorInput, StrokeGenerator, DrawingPhase };
 export {
   DRAWING_PHASES,
   DEFAULT_GENERATOR,
+  FREEFORM_GENERATOR,
   GENERATOR_FOR_TYPE,
   getStrokeGenerator,
   registerStrokeGenerator,

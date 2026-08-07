@@ -44,6 +44,7 @@ export {
 } from "./commands.js";
 
 export {
+  RUNTIME_EVENT_TYPES,
   SSE_HEADERS,
   SSE_KEEPALIVE,
   decodeServerEvent,

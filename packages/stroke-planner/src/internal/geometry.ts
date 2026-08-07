@@ -93,6 +93,68 @@ export function isClosed(points: readonly Point[]): boolean {
 }
 
 /**
+ * The largest box of the given width:height ratio that fits inside `b`, centred.
+ *
+ * A FreeformShape states the proportion it wants and the layout engine "scales,
+ * never distorts" (AD-5), so a shape placed in a box of the wrong ratio is
+ * letterboxed rather than stretched -- a hexagon in a wide box stays a hexagon.
+ */
+export function fitAspect(b: BoundingBox, aspectRatio: number): BoundingBox {
+  if (!(aspectRatio > 0) || b.width <= 0 || b.height <= 0) return b;
+  const width = Math.min(b.width, b.height * aspectRatio);
+  const height = width / aspectRatio;
+  return {
+    x: round(b.x + (b.width - width) / 2),
+    y: round(b.y + (b.height - height) / 2),
+    width: round(width),
+    height: round(height),
+  };
+}
+
+/**
+ * Samples per curve segment. Fixed for the same reason as `ELLIPSE_STEPS`: a
+ * point count that varied with size would make the Stroke AST depend on the
+ * layout's scale rather than only its shape (AD-6).
+ */
+export const CURVE_STEPS = 12;
+
+/**
+ * Centripetal Catmull-Rom through every control point, sampled into a polyline.
+ *
+ * Generators emit the pen's actual path, not control points -- `ellipsePath`
+ * already works this way -- because a renderer backend only puts a polyline on a
+ * surface and would otherwise draw a curve as straight segments.
+ */
+export function smoothPath(points: readonly Point[], steps = CURVE_STEPS): Point[] {
+  if (points.length < 3) return points.map(roundPoint);
+
+  const closed = isClosed(points);
+  // A closed ring wraps for its phantom endpoints; an open path duplicates them.
+  const ring = closed ? points.slice(0, -1) : points;
+  const at = (i: number): Point =>
+    closed
+      ? ring[((i % ring.length) + ring.length) % ring.length]!
+      : ring[Math.min(Math.max(i, 0), ring.length - 1)]!;
+
+  const out: Point[] = [];
+  const last = closed ? ring.length : ring.length - 1;
+  for (let i = 0; i < last; i += 1) {
+    const [p0, p1, p2, p3] = [at(i - 1), at(i), at(i + 1), at(i + 2)];
+    for (let s = 0; s < steps; s += 1) {
+      const t = s / steps;
+      const t2 = t * t;
+      const t3 = t2 * t;
+      out.push({
+        x: 0.5 * (2 * p1.x + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3),
+        y: 0.5 * (2 * p1.y + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3),
+      });
+    }
+  }
+  out.push(closed ? ring[0]! : ring[ring.length - 1]!);
+  return out.map(roundPoint);
+}
+
+/**
  * Choose where the pen enters a path, given where it currently is (D-5).
  *
  * A closed path is rotated to begin at whichever vertex is nearest the pen; an
